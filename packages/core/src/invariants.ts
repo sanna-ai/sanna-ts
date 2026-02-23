@@ -12,7 +12,11 @@
  * Modeled after the Python enforcement/constitution_engine.py module.
  */
 
+import { createRequire } from "node:module";
 import type { CheckResult, Constitution, InvariantDefinition } from "./types.js";
+
+const _require = createRequire(import.meta.url);
+const isSafeRegex: (pattern: string | RegExp) => boolean = _require("safe-regex2");
 
 // ── PII patterns ─────────────────────────────────────────────────────
 
@@ -207,6 +211,11 @@ function runRegexMatch(
     return { ...base, passed: true, severity: "info", evidence: null, details: "No pattern specified", status: "NOT_CHECKED" } as CheckResult;
   }
 
+  // Reject known-catastrophic patterns (fail-open for backwards compat)
+  if (!isSafeRegex(inv.pattern)) {
+    return { ...base, passed: true, severity: "info", evidence: `Pattern rejected by safe-regex2: /${inv.pattern}/`, details: `Unsafe regex pattern rejected: /${inv.pattern}/`, status: "UNSAFE_PATTERN" } as CheckResult;
+  }
+
   try {
     const re = new RegExp(inv.pattern);
     const matches = re.test(output);
@@ -229,6 +238,11 @@ function runRegexDeny(
 ): CheckResult {
   if (!inv.pattern) {
     return { ...base, passed: true, severity: "info", evidence: null, details: "No pattern specified", status: "NOT_CHECKED" } as CheckResult;
+  }
+
+  // Reject known-catastrophic patterns (fail-open for backwards compat)
+  if (!isSafeRegex(inv.pattern)) {
+    return { ...base, passed: true, severity: "info", evidence: `Pattern rejected by safe-regex2: /${inv.pattern}/`, details: `Unsafe regex pattern rejected: /${inv.pattern}/`, status: "UNSAFE_PATTERN" } as CheckResult;
   }
 
   try {

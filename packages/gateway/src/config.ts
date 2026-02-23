@@ -6,9 +6,9 @@
  * and provides a policy cascade resolver.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { homedir } from "node:os";
+import { homedir, platform } from "node:os";
 import yaml from "js-yaml";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -178,6 +178,27 @@ function resolvePath(rawPath: string, configDir: string): string {
   return resolve(configDir, expanded);
 }
 
+// ── Environment variable interpolation ───────────────────────────────
+
+/**
+ * Resolve $ENV{VAR_NAME} references in string config values.
+ * Returns the original string if no $ENV{} wrapper is present.
+ * Throws GatewayConfigError if the env var is not set.
+ */
+export function resolveEnvVar(value: string): string {
+  if (!value.startsWith("$ENV{") || !value.endsWith("}")) {
+    return value;
+  }
+  const varName = value.slice(5, -1);
+  const resolved = process.env[varName];
+  if (resolved === undefined) {
+    throw new GatewayConfigError(
+      `Environment variable '${varName}' is not set (referenced in config as ${value})`,
+    );
+  }
+  return resolved;
+}
+
 // ── Loading ──────────────────────────────────────────────────────────
 
 /**
@@ -186,6 +207,22 @@ function resolvePath(rawPath: string, configDir: string): string {
 export function loadGatewayConfig(configPath: string): GatewayConfig {
   if (!existsSync(configPath)) {
     throw new GatewayConfigError(`Config file not found: ${configPath}`);
+  }
+
+  // Permission check: warn if config file is group/world-readable (non-Windows only).
+  // gateway.yaml should be permission-restricted (0o600) since it may contain secrets.
+  if (platform() !== "win32") {
+    try {
+      const mode = statSync(resolve(configPath)).mode & 0o777;
+      if (mode & 0o077) {
+        const octal = "0o" + mode.toString(8);
+        process.stderr.write(
+          `[sanna-gateway] WARNING: ${configPath} has loose permissions (${octal}). Recommended: chmod 600 ${configPath}\n`,
+        );
+      }
+    } catch {
+      // Best-effort — don't fail on permission check errors
+    }
   }
 
   const configDir = dirname(resolve(configPath));
@@ -225,7 +262,7 @@ export function loadGatewayConfig(configPath: string): GatewayConfig {
       publicKeyPath = resolvePath(String(constRaw.public_key_path), configDir);
     }
     if (constRaw.signing_key_path) {
-      signingKeyPath = resolvePath(String(constRaw.signing_key_path), configDir);
+      signingKeyPath = resolvePath(resolveEnvVar(String(constRaw.signing_key_path)), configDir);
     }
   } else {
     throw new GatewayConfigError("Missing required field: constitution");
@@ -302,7 +339,7 @@ export function loadGatewayConfig(configPath: string): GatewayConfig {
   const escRaw = (gwRaw.escalation ?? data.escalation) as Record<string, unknown> | undefined;
   if (escRaw && typeof escRaw === "object") {
     escalation = {
-      hmac_secret: String(escRaw.hmac_secret ?? ""),
+      hmac_secret: resolveEnvVar(String(escRaw.hmac_secret ?? "")),
       ttl_seconds: escRaw.ttl_seconds ? Number(escRaw.ttl_seconds) : undefined,
       store_path: escRaw.store_path
         ? resolvePath(String(escRaw.store_path), configDir)

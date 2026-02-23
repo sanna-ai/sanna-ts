@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EscalationStore } from "../src/escalation.js";
@@ -203,5 +203,58 @@ describe("EscalationStore", () => {
 
     // Tokens from different secrets should differ
     expect(token1).not.toBe(token2);
+  });
+
+  it("should store a hash of the token, not the raw token", () => {
+    const store = new EscalationStore({ hmacSecret: SECRET });
+    const { escalation_id, token } = store.createEscalation(
+      "tool",
+      {},
+      "reason",
+      "agent",
+    );
+    const esc = store.get(escalation_id);
+    expect(esc).toBeDefined();
+    // The stored token should NOT be the raw token
+    expect(esc!.token).not.toBe(token);
+    // The stored token should be a 64-char hex string (SHA-256 of the HMAC token)
+    expect(esc!.token).toMatch(/^[a-f0-9]{64}$/);
+    // The raw token itself should also be 64 chars (HMAC-SHA256 output)
+    expect(token).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("should still approve with the original raw token after hashing", () => {
+    const store = new EscalationStore({ hmacSecret: SECRET });
+    const { escalation_id, token } = store.createEscalation(
+      "tool",
+      {},
+      "reason",
+      "agent",
+    );
+    // Approval should work with the raw token returned to the caller
+    const ok = store.verifyAndApprove(escalation_id, token);
+    expect(ok).toBe(true);
+    expect(store.getStatus(escalation_id)).toBe("approved");
+  });
+
+  it("should not persist the raw token to the JSON file", () => {
+    const path = join(tmpDir, "esc-hash-check.json");
+    const store = new EscalationStore({
+      hmacSecret: SECRET,
+      storePath: path,
+    });
+    const { token } = store.createEscalation(
+      "tool",
+      { key: "val" },
+      "reason",
+      "agent",
+    );
+    // Read the persisted JSON and check the raw token is not present
+    const fileContent = readFileSync(path, "utf-8");
+    expect(fileContent).not.toContain(token);
+    // But it should contain the hash
+    const data = JSON.parse(fileContent);
+    expect(data[0].token).toMatch(/^[a-f0-9]{64}$/);
+    expect(data[0].token).not.toBe(token);
   });
 });

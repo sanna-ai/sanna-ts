@@ -4,9 +4,12 @@
  * Manages pending escalations with HMAC token verification.
  * When a tool call requires escalation, an entry is created
  * with a cryptographic token that must be presented for approval.
+ *
+ * Security: only a SHA-256 hash of the HMAC token is stored at rest.
+ * The raw token is returned to the caller and never persisted.
  */
 
-import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
+import { randomUUID, createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { safeWriteJson } from "@sanna/core";
 
@@ -21,6 +24,7 @@ export interface Escalation {
   reason: string;
   agent_id: string;
   status: EscalationStatus;
+  /** SHA-256 hash of the HMAC token (never the raw token) */
   token: string;
   created_at: string;
   expires_at: string;
@@ -52,16 +56,8 @@ function generateToken(
   return hmac.digest("hex");
 }
 
-function verifyToken(
-  token: string,
-  escalationId: string,
-  toolName: string,
-  createdAt: string,
-  secret: string,
-): boolean {
-  const expected = generateToken(escalationId, toolName, createdAt, secret);
-  if (token.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 // ── Escalation Store ─────────────────────────────────────────────────
@@ -94,6 +90,7 @@ export class EscalationStore {
 
   /**
    * Create a new pending escalation.
+   * Returns the raw HMAC token to the caller; only its SHA-256 hash is stored.
    */
   createEscalation(
     toolName: string,
@@ -106,7 +103,8 @@ export class EscalationStore {
     const expiresAt = new Date(
       Date.now() + this._ttlSeconds * 1000,
     ).toISOString();
-    const token = generateToken(id, toolName, createdAt, this._hmacSecret);
+    const rawToken = generateToken(id, toolName, createdAt, this._hmacSecret);
+    const tokenHash = hashToken(rawToken);
 
     const escalation: Escalation = {
       id,
@@ -115,7 +113,7 @@ export class EscalationStore {
       reason,
       agent_id: agentId,
       status: "pending",
-      token,
+      token: tokenHash, // stored as hash, not raw token
       created_at: createdAt,
       expires_at: expiresAt,
     };
@@ -123,11 +121,13 @@ export class EscalationStore {
     this._escalations.set(id, escalation);
     this._persist();
 
-    return { escalation_id: id, token, expires_at: expiresAt };
+    return { escalation_id: id, token: rawToken, expires_at: expiresAt };
   }
 
   /**
    * Verify HMAC token and approve an escalation.
+   * Recomputes the expected token from the escalation's fields,
+   * hashes it, and compares against the stored hash.
    */
   verifyAndApprove(escalationId: string, token: string): boolean {
     const esc = this._escalations.get(escalationId);
@@ -141,16 +141,18 @@ export class EscalationStore {
       return false;
     }
 
-    // Verify HMAC
-    if (
-      !verifyToken(
-        token,
-        esc.id,
-        esc.tool_name,
-        esc.created_at,
-        this._hmacSecret,
-      )
-    ) {
+    // Recompute expected token and compare hashes
+    const expectedToken = generateToken(
+      esc.id,
+      esc.tool_name,
+      esc.created_at,
+      this._hmacSecret,
+    );
+    const expectedHash = hashToken(expectedToken);
+    const providedHash = hashToken(token);
+
+    if (providedHash.length !== expectedHash.length) return false;
+    if (!timingSafeEqual(Buffer.from(providedHash), Buffer.from(expectedHash))) {
       return false;
     }
 
@@ -175,16 +177,18 @@ export class EscalationStore {
       return false;
     }
 
-    // Verify HMAC
-    if (
-      !verifyToken(
-        token,
-        esc.id,
-        esc.tool_name,
-        esc.created_at,
-        this._hmacSecret,
-      )
-    ) {
+    // Recompute expected token and compare hashes
+    const expectedToken = generateToken(
+      esc.id,
+      esc.tool_name,
+      esc.created_at,
+      this._hmacSecret,
+    );
+    const expectedHash = hashToken(expectedToken);
+    const providedHash = hashToken(token);
+
+    if (providedHash.length !== expectedHash.length) return false;
+    if (!timingSafeEqual(Buffer.from(providedHash), Buffer.from(expectedHash))) {
       return false;
     }
 

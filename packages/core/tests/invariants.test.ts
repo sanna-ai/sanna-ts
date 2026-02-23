@@ -256,6 +256,39 @@ describe("runInvariantCheck", () => {
     });
   });
 
+  describe("safe regex validation", () => {
+    it("should reject a known ReDoS pattern like (a+)+", () => {
+      const inv: InvariantDefinition = {
+        id: "INV_REDOS", rule: "Must match pattern", enforcement: "warn",
+        type: "regex_match", pattern: "(a+)+",
+      };
+      const result = runInvariantCheck(inv, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaab");
+      expect(result.passed).toBe(true); // fail-open
+      expect(result.status).toBe("UNSAFE_PATTERN");
+      expect(result.evidence).toContain("safe-regex2");
+    });
+
+    it("should reject a ReDoS pattern in regex_deny", () => {
+      const inv: InvariantDefinition = {
+        id: "INV_REDOS_DENY", rule: "Deny pattern", enforcement: "halt",
+        type: "regex_deny", pattern: "(a+)+",
+      };
+      const result = runInvariantCheck(inv, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaab");
+      expect(result.passed).toBe(true); // fail-open
+      expect(result.status).toBe("UNSAFE_PATTERN");
+    });
+
+    it("should allow a normal safe pattern to execute", () => {
+      const inv: InvariantDefinition = {
+        id: "INV_SAFE", rule: "Must match date", enforcement: "warn",
+        type: "regex_match", pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+      };
+      const result = runInvariantCheck(inv, "2026-02-22");
+      expect(result.passed).toBe(true);
+      expect(result.status).toBeUndefined();
+    });
+  });
+
   describe("unknown type", () => {
     it("should return NOT_CHECKED for unknown invariant type", () => {
       const inv: InvariantDefinition = {

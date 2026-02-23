@@ -10,7 +10,14 @@
     "directory": "packages/core"
   },
   "homepage": "https://github.com/sanna-ai/sanna-protocol",
-  "keywords": ["ai", "governance", "constitution", "cryptographic-receipts", "ed25519", "sanna"],
+  "keywords": [
+    "ai",
+    "governance",
+    "constitution",
+    "cryptographic-receipts",
+    "ed25519",
+    "sanna"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -38,6 +45,7 @@
     "ajv": "^8.17.1",
     "better-sqlite3": "^11.8.1",
     "canonicalize": "^2.0.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "safe-regex2": "^5.0.0"
   }
 }

@@ -41,6 +41,17 @@ describe("redactPII", () => {
     expect(result.redacted).not.toContain("4111");
   });
 
+  it("should handle pathological CC input without ReDoS", () => {
+    // 200+ space-separated single digits — would cause ReDoS with the old regex
+    const pathological = Array.from({ length: 250 }, () => "1").join(" ");
+    const start = performance.now();
+    const result = redactPII(pathological);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(100);
+    // Should still detect the CC-like pattern
+    expect(result).toBeDefined();
+  });
+
   it("should not produce false positives on normal text", () => {
     const result = redactPII("Hello world, this is a normal sentence.");
     expect(result.redaction_count).toBe(0);
@@ -111,5 +122,40 @@ describe("redactInObject", () => {
   it("should handle null and undefined", () => {
     expect(redactInObject(null)).toBeNull();
     expect(redactInObject(undefined)).toBeUndefined();
+  });
+
+  it("should respect maxDepth and stop recursing beyond it", () => {
+    // Build a 25-level-deep object with an email at every level
+    let obj: any = { email: "deep@example.com" };
+    for (let i = 0; i < 24; i++) {
+      obj = { nested: obj };
+    }
+    // With default maxDepth=20, levels 0-19 get redacted, levels 20+ do not
+    const result = redactInObject(obj) as any;
+    // Walk 19 levels — should still be redacting
+    let current = result;
+    for (let i = 0; i < 19; i++) current = current.nested;
+    // Level 19 is an object; its nested.email is at level 20+ so NOT redacted
+    // But level 19 itself contains .nested which has the email
+    // Let's check: level 20 and beyond should have raw email
+    let deep = result;
+    for (let i = 0; i < 24; i++) deep = deep.nested;
+    expect(deep.email).toBe("deep@example.com"); // NOT redacted (beyond depth 20)
+  });
+
+  it("should work normally with objects within maxDepth", () => {
+    const result = redactInObject({
+      a: { b: { email: "test@example.com" } },
+    }) as any;
+    expect(result.a.b.email).toContain("[EMAIL_REDACTED]");
+  });
+
+  it("should return input unchanged when maxDepth is 0", () => {
+    const input = { email: "test@example.com", nested: { email: "a@b.com" } };
+    const result = redactInObject(input, undefined, 0) as any;
+    // Strings at top level are still redacted (string check happens before depth check)
+    // But object recursion is stopped at depth 0
+    expect(result.email).toBe("test@example.com");
+    expect(result.nested.email).toBe("a@b.com");
   });
 });

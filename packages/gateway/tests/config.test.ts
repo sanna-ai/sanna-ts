@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import yaml from "js-yaml";
@@ -7,6 +7,7 @@ import {
   loadGatewayConfig,
   validateGatewayConfig,
   resolveToolPolicy,
+  resolveEnvVar,
   GatewayConfigError,
 } from "../src/config.js";
 import type { GatewayConfig, DownstreamConfig } from "../src/config.js";
@@ -250,5 +251,91 @@ describe("resolveToolPolicy", () => {
       args: [],
     };
     expect(resolveToolPolicy("some-tool", ds, "allow")).toBeNull();
+  });
+});
+
+describe("resolveEnvVar", () => {
+  it("should resolve $ENV{} references when env var is set", () => {
+    process.env.TEST_HMAC_SECRET = "my-secret-value";
+    try {
+      expect(resolveEnvVar("$ENV{TEST_HMAC_SECRET}")).toBe("my-secret-value");
+    } finally {
+      delete process.env.TEST_HMAC_SECRET;
+    }
+  });
+
+  it("should throw when env var is missing", () => {
+    delete process.env.SANNA_NONEXISTENT_VAR_12345;
+    expect(() => resolveEnvVar("$ENV{SANNA_NONEXISTENT_VAR_12345}")).toThrow(
+      "SANNA_NONEXISTENT_VAR_12345",
+    );
+  });
+
+  it("should pass through plain strings unchanged", () => {
+    expect(resolveEnvVar("plain-secret")).toBe("plain-secret");
+    expect(resolveEnvVar("")).toBe("");
+    expect(resolveEnvVar("$ENV{incomplete")).toBe("$ENV{incomplete");
+  });
+});
+
+describe("loadGatewayConfig env var interpolation", () => {
+  it("should resolve $ENV{} in escalation.hmac_secret", () => {
+    process.env.TEST_GW_HMAC = "resolved-hmac-secret";
+    try {
+      const path = writeConfig({
+        gateway: {
+          constitution: { path: "./constitution.yaml" },
+          escalation: { hmac_secret: "$ENV{TEST_GW_HMAC}" },
+        },
+        downstreams: [{ name: "s", command: "node" }],
+      });
+      const config = loadGatewayConfig(path);
+      expect(config.escalation!.hmac_secret).toBe("resolved-hmac-secret");
+    } finally {
+      delete process.env.TEST_GW_HMAC;
+    }
+  });
+
+  it("should throw when referenced env var is missing", () => {
+    delete process.env.MISSING_GW_SECRET;
+    const path = writeConfig({
+      gateway: {
+        constitution: { path: "./constitution.yaml" },
+        escalation: { hmac_secret: "$ENV{MISSING_GW_SECRET}" },
+      },
+      downstreams: [{ name: "s", command: "node" }],
+    });
+    expect(() => loadGatewayConfig(path)).toThrow("MISSING_GW_SECRET");
+  });
+});
+
+describe("loadGatewayConfig file permission warning", () => {
+  it("should warn on loose file permissions", () => {
+    const path = writeConfig({
+      gateway: {
+        constitution: { path: "./constitution.yaml" },
+      },
+      downstreams: [{ name: "s", command: "node" }],
+    });
+    // Set world-readable permissions
+    chmodSync(path, 0o644);
+
+    // Capture stderr
+    const chunks: string[] = [];
+    const origWrite = process.stderr.write;
+    process.stderr.write = ((chunk: string) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      loadGatewayConfig(path);
+    } finally {
+      process.stderr.write = origWrite;
+    }
+
+    const stderr = chunks.join("");
+    expect(stderr).toContain("WARNING");
+    expect(stderr).toContain("loose permissions");
   });
 });

@@ -19,6 +19,7 @@ export {
   loadGatewayConfig,
   validateGatewayConfig,
   resolveToolPolicy,
+  resolveEnvVar,
   GatewayConfigError,
 } from "./config.js";
 export type { GatewayConfig, DownstreamConfig } from "./config.js";
