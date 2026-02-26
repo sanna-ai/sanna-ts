@@ -43,6 +43,11 @@ export interface GatewayConfig {
     store_path?: string;
     ttl_seconds?: number;
     hmac_secret: string;
+    delivery_methods?: Array<"inline" | "webhook" | "file">;
+    webhook_url?: string;
+    webhook_headers?: Record<string, string>;
+    token_file_path?: string;
+    max_pending_tokens?: number;
   };
   receipts?: {
     store_path?: string;
@@ -149,6 +154,19 @@ export function validateGatewayConfig(config: GatewayConfig): void {
       throw new GatewayConfigError(
         "Missing required field: escalation.hmac_secret",
       );
+    }
+    const methods = config.escalation.delivery_methods ?? ["inline"];
+    if (methods.includes("webhook")) {
+      if (!config.escalation.webhook_url) {
+        throw new GatewayConfigError(
+          "escalation.webhook_url is required when 'webhook' is in delivery_methods",
+        );
+      }
+      if (!config.escalation.webhook_url.startsWith("https://")) {
+        throw new GatewayConfigError(
+          "escalation.webhook_url must use HTTPS (https://)",
+        );
+      }
     }
   }
 
@@ -338,12 +356,34 @@ export function loadGatewayConfig(configPath: string): GatewayConfig {
   let escalation: GatewayConfig["escalation"];
   const escRaw = (gwRaw.escalation ?? data.escalation) as Record<string, unknown> | undefined;
   if (escRaw && typeof escRaw === "object") {
+    // Parse delivery_methods
+    let deliveryMethods: Array<"inline" | "webhook" | "file"> | undefined;
+    if (Array.isArray(escRaw.delivery_methods)) {
+      deliveryMethods = escRaw.delivery_methods.map(String) as Array<"inline" | "webhook" | "file">;
+    }
+
+    // Parse webhook_headers
+    let webhookHeaders: Record<string, string> | undefined;
+    if (escRaw.webhook_headers && typeof escRaw.webhook_headers === "object") {
+      webhookHeaders = {};
+      for (const [k, v] of Object.entries(escRaw.webhook_headers as Record<string, unknown>)) {
+        webhookHeaders[k] = String(v);
+      }
+    }
+
     escalation = {
       hmac_secret: resolveEnvVar(String(escRaw.hmac_secret ?? "")),
       ttl_seconds: escRaw.ttl_seconds ? Number(escRaw.ttl_seconds) : undefined,
       store_path: escRaw.store_path
         ? resolvePath(String(escRaw.store_path), configDir)
         : undefined,
+      delivery_methods: deliveryMethods,
+      webhook_url: escRaw.webhook_url ? resolveEnvVar(String(escRaw.webhook_url)) : undefined,
+      webhook_headers: webhookHeaders,
+      token_file_path: escRaw.token_file_path
+        ? resolvePath(String(escRaw.token_file_path), configDir)
+        : undefined,
+      max_pending_tokens: escRaw.max_pending_tokens ? Number(escRaw.max_pending_tokens) : undefined,
     };
   }
 

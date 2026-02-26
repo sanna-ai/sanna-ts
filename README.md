@@ -364,6 +364,18 @@ sanna drift-report --db .sanna/receipts.db --window 30 --json
 | Privacy-Focused | PII-aware, data handling boundaries |
 | Minimal | Bare minimum constitution for custom configuration |
 
+### Gateway Constitution Templates
+
+Five ready-to-use constitution templates for gateway deployments live in [`examples/constitutions/`](examples/constitutions/). Each includes evaluation order documentation explaining how `cannot_execute`, `must_escalate`, and `can_execute` interact.
+
+| Template | Agent | Use Case |
+|----------|-------|----------|
+| [`openclaw-personal`](examples/constitutions/openclaw-personal.yaml) | personal-agent | Individuals running autonomous agents on their own machine |
+| [`openclaw-developer`](examples/constitutions/openclaw-developer.yaml) | skill-builder-agent | Strict containment for skill marketplace distribution |
+| [`cowork-personal`](examples/constitutions/cowork-personal.yaml) | knowledge-worker-agent | Knowledge workers using Cowork / Claude Desktop with MCP servers |
+| [`cowork-team`](examples/constitutions/cowork-team.yaml) | team-workspace-agent | Small teams sharing governance via Git with per-developer sidecars |
+| [`claude-code-standard`](examples/constitutions/claude-code-standard.yaml) | claude-code-agent | Developers using Claude Code with MCP connectors |
+
 ## CLI Reference
 
 All commands are available as `sanna <command>`:
@@ -621,7 +633,7 @@ cd sanna-ts
 git submodule update --init        # Pull sanna-protocol spec fixtures
 npm install                        # Workspaces auto-linked
 npm run build                      # Build all 4 packages
-npm test                           # 555 tests across 29 test files
+npm test                           # 573 tests across 31 test files
 ```
 
 The `spec/` git submodule points to [sanna-ai/sanna-protocol](https://github.com/sanna-ai/sanna-protocol) and provides golden fixtures, JSON schemas, and the protocol specification used by the cross-language test suite.

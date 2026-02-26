@@ -11,6 +11,10 @@ import { checkConfigCommand } from "./commands/check-config.js";
 import { driftReportCommand } from "./commands/drift-report.js";
 import { gatewayCommand } from "./commands/gateway.js";
 import { migrateCommand } from "./commands/migrate.js";
+import { approveCommand } from "./commands/approve.js";
+import { bundleCreateCommand } from "./commands/bundle-create.js";
+import { bundleVerifyCommand } from "./commands/bundle-verify.js";
+import { generateCommand } from "./commands/generate.js";
 
 const program = new Command();
 
@@ -31,5 +35,9 @@ program.addCommand(checkConfigCommand);
 program.addCommand(driftReportCommand);
 program.addCommand(gatewayCommand);
 program.addCommand(migrateCommand);
+program.addCommand(approveCommand);
+program.addCommand(bundleCreateCommand);
+program.addCommand(bundleVerifyCommand);
+program.addCommand(generateCommand);
 
 program.parse();

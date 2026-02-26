@@ -1,7 +1,7 @@
 /**
  * Sanna MCP Server — governance tools for Model Context Protocol.
  *
- * Exposes 7 tools over stdio:
+ * Exposes 10 tools over stdio:
  *   - sanna_evaluate_authority — evaluate action permission
  *   - sanna_generate_receipt — generate a governance receipt
  *   - sanna_verify_receipt — verify receipt integrity
@@ -9,6 +9,9 @@
  *   - sanna_drift_report — governance drift analytics
  *   - sanna_get_constitution — load and return constitution
  *   - sanna_verify_constitution — verify constitution signature
+ *   - sanna_list_checks — list all coherence checks
+ *   - sanna_check_constitution_approval — check approval status
+ *   - sanna_verify_identity_claims — verify identity claims
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -17,6 +20,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+
+import { readFileSync } from "node:fs";
 
 import {
   evaluateAuthority,
@@ -33,15 +38,23 @@ import {
   exportDriftReport,
   loadPublicKey,
   loadPrivateKey,
+  getKeyId,
   runCoherenceChecks,
   runAllInvariantChecks,
+  verifyApproval,
+  isApprovalExpired,
+  verifyIdentityClaim,
   SPEC_VERSION,
 } from "@sanna-ai/core";
 
 import type {
   Constitution,
   CheckResult,
+  ApprovalRequest,
+  IdentityClaim,
 } from "@sanna-ai/core";
+
+import type { KeyObject } from "node:crypto";
 
 // ── Size guards ─────────────────────────────────────────────────────
 
@@ -307,6 +320,69 @@ const TOOLS = [
         },
       },
       required: ["constitution_path", "public_key_path"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
+  },
+  {
+    name: "sanna_list_checks",
+    description:
+      "List all Sanna coherence checks (C1-C5) with descriptions, " +
+      "invariant mappings, default enforcement levels, and severities.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
+  },
+  {
+    name: "sanna_check_constitution_approval",
+    description:
+      "Check the approval status of a constitution. Returns approval count, " +
+      "status, expiry, and individual approver details.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        approval_path: {
+          type: "string",
+          description: "Path to approval JSON file",
+        },
+        public_key_path: {
+          type: "string",
+          description: "Ed25519 public key for verifying approval signatures (optional)",
+        },
+      },
+      required: ["approval_path"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
+  },
+  {
+    name: "sanna_verify_identity_claims",
+    description:
+      "Verify identity claims for an agent or entity. " +
+      "Checks Ed25519 signatures and expiration.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        claims_json: {
+          type: "string",
+          description: "JSON string containing identity claims (single object or array)",
+        },
+        public_key_path: {
+          type: "string",
+          description: "Ed25519 public key for signature verification",
+        },
+      },
+      required: ["claims_json", "public_key_path"],
     },
     annotations: {
       readOnlyHint: true,
@@ -635,6 +711,163 @@ function handleVerifyConstitution(
   return jsonResult(result);
 }
 
+function handleListChecks(): ToolResult {
+  const CHECKS_VERSION = "5";
+  return jsonResult({
+    checks_version: CHECKS_VERSION,
+    spec_version: SPEC_VERSION,
+    total: 5,
+    checks: [
+      {
+        check_id: "C1",
+        name: "Context Contradiction",
+        invariant: "INV_NO_FABRICATION",
+        check_impl: "sanna.context_contradiction",
+        description: "Detects when output contradicts provided context",
+        default_severity: "critical",
+        default_enforcement: "halt",
+      },
+      {
+        check_id: "C2",
+        name: "Mark Inferences",
+        invariant: "INV_MARK_INFERENCE",
+        check_impl: "sanna.unmarked_inference",
+        description: "Detects definitive claims without hedging language",
+        default_severity: "warning",
+        default_enforcement: "warn",
+      },
+      {
+        check_id: "C3",
+        name: "No False Certainty",
+        invariant: "INV_NO_FALSE_CERTAINTY",
+        check_impl: "sanna.false_certainty",
+        description: "Detects confidence exceeding evidence strength",
+        default_severity: "warning",
+        default_enforcement: "warn",
+      },
+      {
+        check_id: "C4",
+        name: "Preserve Tension",
+        invariant: "INV_PRESERVE_TENSION",
+        check_impl: "sanna.conflict_collapse",
+        description: "Detects conflicting information collapsed without justification",
+        default_severity: "warning",
+        default_enforcement: "warn",
+      },
+      {
+        check_id: "C5",
+        name: "No Premature Compression",
+        invariant: "INV_NO_PREMATURE_COMPRESSION",
+        check_impl: "sanna.premature_compression",
+        description: "Detects complex input reduced to overly simple output",
+        default_severity: "warning",
+        default_enforcement: "warn",
+      },
+    ],
+  });
+}
+
+function handleCheckConstitutionApproval(
+  args: Record<string, unknown>,
+): ToolResult {
+  const approvalPath = String(args.approval_path ?? "");
+  const publicKeyPath = args.public_key_path ? String(args.public_key_path) : undefined;
+
+  if (!approvalPath) return errorResult("approval_path is required");
+
+  let request: ApprovalRequest;
+  try {
+    request = JSON.parse(readFileSync(approvalPath, "utf-8")) as ApprovalRequest;
+  } catch (e) {
+    return errorResult(`Failed to read approval file: ${(e as Error).message}`);
+  }
+
+  const result: Record<string, unknown> = {
+    id: request.id,
+    status: request.status,
+    constitution_hash: request.constitution_hash,
+    requester: request.requester,
+    requested_at: request.requested_at,
+    expires_at: request.expires_at,
+    required_approvals: request.required_approvals,
+    current_approvals: request.approvals.length,
+    expired: isApprovalExpired(request),
+  };
+
+  if (publicKeyPath && request.approvals.length > 0) {
+    try {
+      const pubKey = loadPublicKey(publicKeyPath);
+      const keyId = getKeyId(pubKey);
+      const keyMap = new Map<string, KeyObject>();
+      keyMap.set(keyId, pubKey);
+      const verification = verifyApproval(request, keyMap);
+      result.signature_verification = {
+        valid: verification.valid,
+        verified_count: verification.verified_count,
+        required_count: verification.required_count,
+        details: verification.details,
+      };
+    } catch (e) {
+      result.signature_verification = {
+        valid: false,
+        error: (e as Error).message,
+      };
+    }
+  }
+
+  return jsonResult(result);
+}
+
+function handleVerifyIdentityClaims(
+  args: Record<string, unknown>,
+): ToolResult {
+  const claimsJson = String(args.claims_json ?? "");
+  const publicKeyPath = String(args.public_key_path ?? "");
+
+  if (!claimsJson) return errorResult("claims_json is required");
+  if (!publicKeyPath) return errorResult("public_key_path is required");
+
+  checkInputSize(claimsJson, "claims_json");
+
+  let claims: IdentityClaim[];
+  try {
+    const parsed = JSON.parse(claimsJson);
+    claims = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return errorResult("Invalid JSON in claims_json");
+  }
+
+  const pubKey = loadPublicKey(publicKeyPath);
+
+  const results = claims.map((claim) => {
+    try {
+      const verification = verifyIdentityClaim(claim, pubKey);
+      return {
+        claim_id: claim.id,
+        claim_type: claim.claim_type,
+        subject_key_id: claim.subject_key_id,
+        valid: verification.valid,
+        expired: verification.expired,
+        signature_valid: verification.signature_valid,
+      };
+    } catch (e) {
+      return {
+        claim_id: claim.id,
+        valid: false,
+        error: (e as Error).message,
+      };
+    }
+  });
+
+  const validCount = results.filter((r) => r.valid).length;
+
+  return jsonResult({
+    total: results.length,
+    valid_count: validCount,
+    results,
+  });
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────
 
 const HANDLER_MAP: Record<
@@ -648,6 +881,9 @@ const HANDLER_MAP: Record<
   sanna_drift_report: handleDriftReport,
   sanna_get_constitution: handleGetConstitution,
   sanna_verify_constitution: handleVerifyConstitution,
+  sanna_list_checks: () => handleListChecks(),
+  sanna_check_constitution_approval: (args) => handleCheckConstitutionApproval(args),
+  sanna_verify_identity_claims: (args) => handleVerifyIdentityClaims(args),
 };
 
 // ── Server factory ──────────────────────────────────────────────────

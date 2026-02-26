@@ -15,6 +15,10 @@ import {
   signReceipt,
   loadPrivateKey,
   ReceiptStore,
+  createApprovalRequest,
+  signApproval,
+  createIdentityClaim,
+  getKeyId,
 } from "@sanna-ai/core";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -172,19 +176,22 @@ async function createTestClient(
 }
 
 describe("tool listing", () => {
-  it("should list all 7 tools", async () => {
+  it("should list all 10 tools", async () => {
     const { client, cleanup } = await createTestClient();
     try {
       const result = await client.listTools();
-      expect(result.tools).toHaveLength(7);
+      expect(result.tools).toHaveLength(10);
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
+        "sanna_check_constitution_approval",
         "sanna_drift_report",
         "sanna_evaluate_authority",
         "sanna_generate_receipt",
         "sanna_get_constitution",
+        "sanna_list_checks",
         "sanna_query_receipts",
         "sanna_verify_constitution",
+        "sanna_verify_identity_claims",
         "sanna_verify_receipt",
       ]);
     } finally {
@@ -853,6 +860,204 @@ describe("size guards", () => {
       expect((result as any).isError).toBe(true);
       const text = (result.content as any)[0].text;
       expect(text).toContain("exceeds maximum size");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("sanna_list_checks", () => {
+  it("should return all 5 checks", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_list_checks",
+        arguments: {},
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.total).toBe(5);
+      expect(data.checks).toHaveLength(5);
+      const ids = data.checks.map((c: any) => c.check_id);
+      expect(ids).toEqual(["C1", "C2", "C3", "C4", "C5"]);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should include metadata for each check", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_list_checks",
+        arguments: {},
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      for (const check of data.checks) {
+        expect(check.check_id).toBeTruthy();
+        expect(check.name).toBeTruthy();
+        expect(check.invariant).toBeTruthy();
+        expect(check.description).toBeTruthy();
+        expect(check.default_severity).toBeTruthy();
+        expect(check.default_enforcement).toBeTruthy();
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("sanna_check_constitution_approval", () => {
+  it("should check a pending approval", async () => {
+    const request = createApprovalRequest("a".repeat(64), "test@sanna.dev", {
+      required_approvals: 2,
+      expires_in_hours: 72,
+    });
+    const approvalPath = join(tmpDir, "approval.json");
+    writeFileSync(approvalPath, JSON.stringify(request), "utf-8");
+
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_check_constitution_approval",
+        arguments: { approval_path: approvalPath },
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.status).toBe("pending");
+      expect(data.required_approvals).toBe(2);
+      expect(data.current_approvals).toBe(0);
+      expect(data.expired).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should check an approved approval with signature verification", async () => {
+    const kp = generateKeypair();
+    const keyPath = join(tmpDir, "approver.key");
+    const pubPath = join(tmpDir, "approver.pub");
+    writeFileSync(keyPath, exportPrivateKeyPem(kp.privateKey), "utf-8");
+    writeFileSync(pubPath, exportPublicKeyPem(kp.publicKey), "utf-8");
+
+    const request = createApprovalRequest("b".repeat(64), "test@sanna.dev", {
+      required_approvals: 1,
+      expires_in_hours: 72,
+    });
+    signApproval(request, kp.privateKey);
+    const approvalPath = join(tmpDir, "approved.json");
+    writeFileSync(approvalPath, JSON.stringify(request), "utf-8");
+
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_check_constitution_approval",
+        arguments: {
+          approval_path: approvalPath,
+          public_key_path: pubPath,
+        },
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.status).toBe("approved");
+      expect(data.current_approvals).toBe(1);
+      expect(data.signature_verification).toBeDefined();
+      expect(data.signature_verification.valid).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should return error for missing approval path", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_check_constitution_approval",
+        arguments: {},
+      });
+      expect((result as any).isError).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should return error for non-existent file", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_check_constitution_approval",
+        arguments: { approval_path: "/nonexistent/approval.json" },
+      });
+      expect((result as any).isError).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("sanna_verify_identity_claims", () => {
+  it("should verify a valid identity claim", async () => {
+    const kp = generateKeypair();
+    const pubPath = join(tmpDir, "id.pub");
+    writeFileSync(pubPath, exportPublicKeyPem(kp.publicKey), "utf-8");
+
+    const keyId = getKeyId(kp.publicKey);
+    const claim = createIdentityClaim("agent", keyId, { name: "test-agent" }, kp.privateKey);
+
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_verify_identity_claims",
+        arguments: {
+          claims_json: JSON.stringify(claim),
+          public_key_path: pubPath,
+        },
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.total).toBe(1);
+      expect(data.valid_count).toBe(1);
+      expect(data.results[0].valid).toBe(true);
+      expect(data.results[0].signature_valid).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should verify multiple claims (array)", async () => {
+    const kp = generateKeypair();
+    const pubPath = join(tmpDir, "id2.pub");
+    writeFileSync(pubPath, exportPublicKeyPem(kp.publicKey), "utf-8");
+
+    const keyId = getKeyId(kp.publicKey);
+    const claim1 = createIdentityClaim("agent", keyId, { name: "agent-1" }, kp.privateKey);
+    const claim2 = createIdentityClaim("operator", keyId, { org: "acme" }, kp.privateKey);
+
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_verify_identity_claims",
+        arguments: {
+          claims_json: JSON.stringify([claim1, claim2]),
+          public_key_path: pubPath,
+        },
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.total).toBe(2);
+      expect(data.valid_count).toBe(2);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should return error for invalid JSON", async () => {
+    const { pubPath } = writeKeypair();
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_verify_identity_claims",
+        arguments: {
+          claims_json: "not json{",
+          public_key_path: pubPath,
+        },
+      });
+      expect((result as any).isError).toBe(true);
     } finally {
       await cleanup();
     }

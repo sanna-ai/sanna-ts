@@ -49,6 +49,8 @@ import { injectJustificationParam } from "./schema-mutation.js";
 import { extractJustification } from "./schema-mutation.js";
 import { redactPII, redactInObject } from "./pii.js";
 import type { PiiPattern } from "./pii.js";
+import { deliverTokenViaWebhook } from "./webhook.js";
+import { deliverTokenToFile } from "./file-delivery.js";
 import {
   computeInputHash,
   computeReasoningHash,
@@ -546,6 +548,47 @@ export class SannaGateway {
               triad,
             );
             this._storeReceipt(receipt);
+
+            // Deliver token via configured methods (best-effort)
+            const deliveryMethods = this._config.escalation?.delivery_methods ?? ["inline"];
+
+            if (deliveryMethods.includes("webhook") && this._config.escalation?.webhook_url) {
+              deliverTokenViaWebhook(
+                {
+                  escalation_id: esc.escalation_id,
+                  tool_name: namespacedName,
+                  reason: effectiveDecision.reason,
+                  token: esc.token,
+                  expires_at: esc.expires_at,
+                },
+                {
+                  url: this._config.escalation.webhook_url,
+                  headers: this._config.escalation.webhook_headers,
+                },
+              ).catch(() => {
+                // Best-effort — webhook failure doesn't block inline response
+              });
+            }
+
+            if (deliveryMethods.includes("file")) {
+              try {
+                deliverTokenToFile(
+                  {
+                    escalation_id: esc.escalation_id,
+                    tool_name: namespacedName,
+                    reason: effectiveDecision.reason,
+                    token: esc.token,
+                    expires_at: esc.expires_at,
+                  },
+                  {
+                    tokenFilePath: this._config.escalation?.token_file_path ?? "~/.sanna/pending_tokens.json",
+                    maxPendingTokens: this._config.escalation?.max_pending_tokens,
+                  },
+                );
+              } catch {
+                // Best-effort — file delivery failure doesn't block inline response
+              }
+            }
 
             return {
               content: [

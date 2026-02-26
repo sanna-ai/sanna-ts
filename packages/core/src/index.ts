@@ -82,6 +82,41 @@ export {
 } from "./invariants.js";
 
 export {
+  registerInvariantEvaluator,
+  getEvaluator,
+  listEvaluators,
+  clearEvaluators,
+} from "./evaluator-registry.js";
+
+export type { InvariantEvaluatorFn } from "./evaluator-registry.js";
+
+export {
+  LLMJudge,
+  enableLlmChecks,
+  registerLlmEvaluators,
+  LLMEvaluationError,
+} from "./evaluators/llm.js";
+
+export type { LLMJudgeOptions } from "./evaluators/llm.js";
+
+export { receiptToSpan, SannaSpanExporter } from "./otel-exporter.js";
+
+export type { ReceiptSpanOptions } from "./otel-exporter.js";
+
+export {
+  JudgeVerdict,
+  HeuristicJudge,
+  ReasoningPipeline,
+} from "./reasoning/index.js";
+
+export type {
+  JudgeResult,
+  BaseJudge,
+  ReasoningPipelineOptions,
+  ReasoningResult,
+} from "./reasoning/index.js";
+
+export {
   sannaObserve,
   withSannaGovernance,
   SannaHaltError,

@@ -13,6 +13,7 @@
  */
 
 import isSafeRegex from "safe-regex2";
+import { getEvaluator } from "./evaluator-registry.js";
 import type { CheckResult, Constitution, InvariantDefinition } from "./types.js";
 
 // ── PII patterns ─────────────────────────────────────────────────────
@@ -152,6 +153,28 @@ export function runInvariantCheck(
   };
 
   if (!invariant.type) {
+    // Try custom evaluator registry before giving up
+    const evaluator = getEvaluator(invariant.id);
+    if (evaluator) {
+      try {
+        const result = evaluator(_context ?? "", output, {} as Constitution, {
+          id: invariant.id,
+          rule: invariant.rule,
+          enforcement: invariant.enforcement,
+        });
+        return { ...result, check_impl: "custom_evaluator", replayable: false };
+      } catch (err) {
+        return {
+          ...base,
+          passed: true,
+          severity: "info",
+          evidence: `Custom evaluator error: ${err instanceof Error ? err.message : String(err)}`,
+          status: "ERRORED",
+          check_impl: "custom_evaluator",
+        };
+      }
+    }
+
     return {
       ...base,
       passed: false,
@@ -173,7 +196,30 @@ export function runInvariantCheck(
       return runRequiredKeywords(invariant, output, base);
     case "pii_detection":
       return runPiiDetection(output, base);
-    default:
+    default: {
+      // Try custom evaluator registry before returning UNKNOWN_TYPE
+      const evaluator = getEvaluator(invariant.id);
+      if (evaluator) {
+        try {
+          const result = evaluator(_context ?? "", output, {} as Constitution, {
+            id: invariant.id,
+            rule: invariant.rule,
+            enforcement: invariant.enforcement,
+            type: invariant.type,
+          });
+          return { ...result, check_impl: "custom_evaluator", replayable: false };
+        } catch (err) {
+          return {
+            ...base,
+            passed: true,
+            severity: "info",
+            evidence: `Custom evaluator error: ${err instanceof Error ? err.message : String(err)}`,
+            status: "ERRORED",
+            check_impl: "custom_evaluator",
+          };
+        }
+      }
+
       return {
         ...base,
         passed: false,
@@ -182,6 +228,7 @@ export function runInvariantCheck(
         details: `Unknown invariant type: ${invariant.type}`,
         status: "UNKNOWN_TYPE",
       };
+    }
   }
 }
 
