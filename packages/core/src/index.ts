@@ -52,6 +52,16 @@ export { verifyReceipt } from "./verifier.js";
 export { ReceiptStore } from "./store.js";
 
 export {
+  type FailurePolicy,
+  type ReceiptSink,
+  type SinkResult,
+  SinkError,
+  createSinkResult,
+  LocalSQLiteSink,
+  NullSink,
+} from "./sinks/index.js";
+
+export {
   DriftAnalyzer,
   calculateSlope,
   projectBreach,
