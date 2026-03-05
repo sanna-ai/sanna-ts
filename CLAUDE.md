@@ -2,6 +2,16 @@
 
 TypeScript monorepo for the Sanna protocol. AGPL-3.0. All packages at v1.0.0.
 
+## MANDATORY: Process & Branching Rules
+
+**These rules are non-negotiable. Violating them is a blocking failure.**
+
+- **Follow instructions exactly as written.** Do not reinterpret, skip, reorder, or "optimize" the steps. If the user says "create branch X off branch Y", do exactly that — do not collapse branches, skip steps, or combine scopes.
+- **When a prerequisite is missing, STOP.** If instructions reference a branch, file, or state that does not exist, do not silently work around it. Ask the user how to proceed or create the prerequisite first. Never skip ahead.
+- **One branch = one scope.** Each feature branch must contain only the work scoped to it. Do not bundle unrelated work into a single branch or commit. Incremental, reviewable units of work are required.
+- **Do not make autonomous decisions about git workflow.** Branch naming, merge order, and commit granularity are the user's decisions. Execute them as specified.
+- **This is a governance platform.** Precision, auditability, and traceability are core values of the product. The development process must reflect those same values. Sloppy branching, collapsed scopes, and skipped steps directly undermine the integrity this project exists to provide.
+
 ## Structure
 
 - packages/core/ — @sanna-ai/core (SDK: crypto, receipts, constitutions, governance, sinks)
@@ -41,12 +51,11 @@ TypeScript monorepo for the Sanna protocol. AGPL-3.0. All packages at v1.0.0.
 - evaluators/llm.ts — LLM-as-Judge semantic evaluators via Anthropic Messages API (fetch, zero deps)
 - otel-exporter.ts — OpenTelemetry bridge: receipt → span (pointer + integrity hash)
 - reasoning/ — reasoning evaluation pipeline with heuristic judge
-- sinks/types.ts — ReceiptSink interface, SinkResult, FailurePolicy
 - sinks/cloud-http-sink.ts — HTTPS receipt delivery (retry, batch, buffer-and-retry, native fetch)
 - sinks/composite-sink.ts — fan-out to multiple sinks with failure isolation
 - sinks/local-sqlite-sink.ts — SQLite persistence via ReceiptStore wrapper
 - sinks/null-sink.ts — no-op sink for testing
-- types.ts — shared TypeScript interfaces (Receipt, ReceiptSink, ContentMode, etc.)
+- types.ts — shared TypeScript interfaces (Receipt, ReceiptSink, ContentMode, FailurePolicy, SinkResult, etc.)
 
 ### @sanna-ai/cli (packages/cli/)
 
@@ -56,8 +65,8 @@ TypeScript monorepo for the Sanna protocol. AGPL-3.0. All packages at v1.0.0.
 
 MCP enforcement proxy — sits between client and downstream MCP servers:
 
-- config.ts — YAML config loading, validation, $ENV{} interpolation, permission warnings
-- gateway.ts — core proxy (tool interception, authority evaluation, receipt generation, ReceiptSink, content mode attestation, receipt chaining)
+- config.ts — YAML config loading, validation, $ENV{} interpolation, permission warnings, content_mode config
+- gateway.ts — core proxy (tool interception, authority evaluation, receipt generation, ReceiptSink, content mode attestation, receipt chaining via escalation fingerprint tracking, per-session workflow_id)
 - downstream.ts — child process MCP server connections via StdioClientTransport (env allowlist)
 - escalation.ts — HMAC-SHA256 escalation token management (SHA-256 hashed at rest)
 - receipt-v2.ts — receipt triad hashing (input/reasoning/action)
@@ -103,6 +112,7 @@ MCP enforcement proxy — sits between client and downstream MCP servers:
 - redactInObject has maxDepth limit (default 20) to prevent stack overflow on deep objects
 - Webhook delivery: HTTPS-only, no redirect following (redirect: "error"), private IP blocking (RFC 1918/6598/loopback/link-local), DNS rebinding protection, 1 MB response body limit
 - Custom evaluator errors produce passed: true with ERRORED status (no false halts from evaluator failures)
+- CloudHTTPSink: no-retry on 400/401/403, 409 treated as success (duplicate), exponential backoff with jitter on 429/503/5xx, buffer-and-retry via JSONL for resilience
 
 ## Receipt Schema (v1.1)
 
@@ -129,6 +139,20 @@ ReceiptSink interface (types.ts): store(), storeBatch?(), flush?(), close?()
 
 Middleware: sannaObserve() accepts `sink` option, calls sink.store() after receipt generation (fire-and-forget).
 Gateway: constructor accepts optional ReceiptSink. Legacy receipts.store_path auto-wraps in LocalSQLiteSink with deprecation warning. Content mode from config, workflow_id per session, receipt chaining via escalation fingerprint tracking.
+
+## Gateway Receipt Chaining
+
+- Escalation → execution: when an escalation is approved, the execution receipt's parent_receipts includes the escalation receipt's full_fingerprint
+- workflow_id is set per gateway session (generated on start())
+- content_mode read from gateway config (receipts.content_mode), content_mode_source = "local_config"
+- Escalation fingerprints tracked in _escalationReceiptFingerprints map for chaining
+
+## Cross-Language Compatibility
+
+- v1.0 Python fixtures use 12-field fingerprint (checks_version "5")
+- v1.1 TypeScript uses 14-field fingerprint (checks_version "6")
+- cross-language.test.ts: v1.0 fixtures skip fingerprint recomputation (expected mismatch), still verify signatures and content hashes
+- v1.1 fixtures (when available) will verify full fingerprint + signature + content hashes
 
 ## Protocol Spec
 
