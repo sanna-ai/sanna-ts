@@ -1,6 +1,6 @@
 {
   "name": "@sanna-ai/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Core library for the Sanna protocol",
   "license": "AGPL-3.0-only",
   "author": "Sanna Contributors",
