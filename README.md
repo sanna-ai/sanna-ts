@@ -4,6 +4,27 @@ Sanna checks reasoning during execution, halts when constraints are violated, an
 
 This is the **TypeScript implementation** of [Sanna Protocol v1.0](https://github.com/sanna-ai/sanna-protocol). For the Python reference implementation, see [sanna-ai/sanna](https://github.com/sanna-ai/sanna).
 
+## v1.0.0 Release Notes
+
+**Receipt Schema v1.1** — 14-field fingerprint (up from 12), adding `parent_receipts` and `workflow_id` for receipt chaining and workflow correlation.
+
+**New receipt fields:**
+- `parent_receipts` — array of parent receipt fingerprints for causal chaining (e.g., escalation → execution)
+- `workflow_id` — per-session identifier for grouping related receipts across a workflow
+- `content_mode` / `content_mode_source` — attestation of what content mode (full, redacted, hashes_only) was active and where it was configured
+
+**ReceiptSink architecture** — pluggable receipt delivery replacing direct SQLite coupling:
+- `CloudHTTPSink` — HTTPS delivery with retry, exponential backoff, batch support, and buffer-and-retry via JSONL
+- `CompositeSink` — fan-out to multiple sinks with `Promise.allSettled()` failure isolation
+- `LocalSQLiteSink` — wraps `ReceiptStore` as a `ReceiptSink` for backward compatibility
+- `NullSink` — no-op sink for testing
+
+**Gateway receipt chaining** — escalation receipts are automatically linked as parents when the escalated tool call is approved and executed. Per-session `workflow_id` groups all receipts within a gateway session.
+
+**Content mode attestation** — gateway records which `content_mode` is active and its source in receipt metadata.
+
+**771 tests across 44 files** (up from 653 across 37).
+
 ## Quick Start — Library Mode
 
 ```bash
@@ -143,9 +164,9 @@ Every governed action produces a reasoning receipt — a JSON artifact that cryp
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `spec_version` | string | Schema version, `"1.0"` |
-| `tool_version` | string | Package version, e.g. `"0.1.0"` |
-| `checks_version` | string | Check algorithm version, e.g. `"5"` |
+| `spec_version` | string | Schema version, `"1.1"` |
+| `tool_version` | string | Package version, e.g. `"sanna-ts/1.0.0"` |
+| `checks_version` | string | Check algorithm version, e.g. `"6"` |
 | `receipt_id` | string | UUID v4 unique identifier |
 | `correlation_id` | string | Path-prefixed identifier for grouping related receipts |
 
@@ -194,6 +215,15 @@ Every governed action produces a reasoning receipt — a JSON artifact that cryp
 | `receipt_signature` | object | Contains `value`, `key_id`, `signed_by`, `signed_at`, `scheme` |
 | `identity_verification` | object or null | Verification results for identity claims, when present |
 
+**Chaining and Workflow**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `parent_receipts` | string[] or null | Fingerprints of causally-linked parent receipts (e.g., escalation → execution) |
+| `workflow_id` | string or null | Per-session identifier grouping related receipts |
+| `content_mode` | string or null | Active content mode: `"full"`, `"redacted"`, or `"hashes_only"` |
+| `content_mode_source` | string or null | Where content mode was configured (e.g., `"gateway.yaml"`) |
+
 **Extensions**
 
 | Field | Type | Description |
@@ -206,9 +236,9 @@ Minimal example receipt (abbreviated — production receipts typically contain 3
 
 ```json
 {
-  "spec_version": "1.0",
-  "tool_version": "0.1.0",
-  "checks_version": "5",
+  "spec_version": "1.1",
+  "tool_version": "sanna-ts/1.0.0",
+  "checks_version": "6",
   "receipt_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
   "receipt_fingerprint": "7b4d06e836514eef",
   "full_fingerprint": "7b4d06e836514eef26ab96f5c62b193d036c92b45d966ef7025d75539ff93aca",
@@ -225,7 +255,11 @@ Minimal example receipt (abbreviated — production receipts typically contain 3
   "checks_failed": 0,
   "status": "PASS",
   "constitution_ref": {"document_id": "support-agent/1.0", "policy_hash": "...", "signature_verified": true},
-  "enforcement": null
+  "enforcement": null,
+  "parent_receipts": null,
+  "workflow_id": null,
+  "content_mode": null,
+  "content_mode_source": null
 }
 ```
 
@@ -400,10 +434,10 @@ All commands are available as `sanna <command>`:
 
 | Package | Description |
 |---------|-------------|
-| [`@sanna-ai/core`](packages/core/) | Constitution engine, Ed25519 crypto, receipts, coherence checks, middleware, receipt store, drift analysis, evidence bundles, approval workflows, identity claims |
+| [`@sanna-ai/core`](packages/core/) | Constitution engine, Ed25519 crypto, receipts, coherence checks, middleware, receipt store, receipt sinks, drift analysis, evidence bundles, approval workflows, identity claims |
 | [`@sanna-ai/cli`](packages/cli/) | Command-line tools (16 commands) |
 | [`@sanna-ai/mcp-server`](packages/mcp-server/) | 10 governance tools over MCP stdio transport |
-| [`@sanna-ai/gateway`](packages/gateway/) | MCP enforcement proxy with circuit breakers, escalation, PII redaction, config migration |
+| [`@sanna-ai/gateway`](packages/gateway/) | MCP enforcement proxy with circuit breakers, escalation, receipt chaining, content mode attestation, PII redaction, config migration |
 
 ## API Reference
 
@@ -448,6 +482,12 @@ import {
   ReceiptStore,
   DriftAnalyzer,
 
+  // Receipt sinks
+  NullSink,
+  LocalSQLiteSink,
+  CloudHTTPSink,
+  CompositeSink,
+
   // Bundles
   createBundle,
   verifyBundle,
@@ -485,6 +525,11 @@ import type {
   DriftReport,
   EnforcementMode,
   InvariantDefinition,
+  ReceiptSink,
+  SinkResult,
+  ContentMode,
+  FailurePolicy,
+  CloudHTTPSinkOptions,
 } from "@sanna-ai/core";
 ```
 
@@ -554,6 +599,9 @@ No network. No API keys. No vendor dependency.
 - **Key management**: SHA-256 key fingerprints, labeled keypairs, PKCS#8/SPKI PEM format.
 - **Multi-party approval**: Quorum-based constitution approval workflows with expiration and cryptographic binding.
 - **MCP governance tools**: 10 governance tools available via MCP stdio for integration with Claude Desktop, Claude Code, and Cursor.
+- **Receipt sinks**: Pluggable receipt delivery — `CloudHTTPSink` (HTTPS with retry/batch/buffer), `CompositeSink` (fan-out), `LocalSQLiteSink`, `NullSink`.
+- **Receipt chaining**: Causal linking via `parent_receipts` (e.g., escalation → execution) with per-session `workflow_id` correlation.
+- **Content mode attestation**: Gateway records active content mode and its configuration source in receipt metadata.
 
 ## Security
 
@@ -565,13 +613,14 @@ No network. No API keys. No vendor dependency.
 - **Escalation token hashing**: Only SHA-256 hashes of HMAC tokens are stored at rest. Raw tokens are returned to the caller but never persisted.
 - **Config secret isolation**: Gateway config supports `$ENV{VAR_NAME}` interpolation for HMAC secrets and key paths. File permission warnings on group/world-readable config files.
 - **Path validation**: File I/O validates against symlink attacks, path traversal, and excessively large files.
+- **CloudHTTPSink hardening**: Non-retryable status codes (400/401/403) fail immediately. 429 respects `Retry-After`. Buffer-and-retry via JSONL with background flush interval.
 
 ## Cryptographic Design
 
 - **Signing**: Ed25519 over canonical JSON (RFC 8785-style deterministic serialization)
 - **Hashing**: SHA-256 for all content hashes, fingerprints, and key IDs
 - **Canonicalization**: Sorted keys, NFC Unicode normalization, integer-only numerics (no floats in signed content)
-- **Fingerprinting**: Pipe-delimited fields hashed with SHA-256; 16-hex truncation for display, 64-hex for full fingerprint
+- **Fingerprinting**: 14 pipe-delimited fields hashed with SHA-256; 16-hex truncation for display, 64-hex for full fingerprint
 
 See the [Sanna Protocol specification](https://github.com/sanna-ai/sanna-protocol) for full cryptographic construction details.
 
@@ -603,7 +652,7 @@ Receipts are attestations of process, not guarantees of outcome.
 
 Receipts generated by the TypeScript SDK verify in the [Python SDK](https://github.com/sanna-ai/sanna), and vice versa. Key pairs are interchangeable — both SDKs use PKCS#8 (private) and SPKI (public) PEM encoding for Ed25519 keys.
 
-Cross-language parity is verified against golden fixtures in the [sanna-protocol](https://github.com/sanna-ai/sanna-protocol) repository. The test suite includes 48 cross-language verification tests covering receipt fingerprinting, content hashing, canonicalization, and signature verification.
+Cross-language parity is verified against golden fixtures in the [sanna-protocol](https://github.com/sanna-ai/sanna-protocol) repository. The test suite includes 48 cross-language verification tests covering receipt fingerprinting, content hashing, canonicalization, and signature verification. v1.0 Python fixtures (12-field fingerprint) are verified for signatures and content hashes; v1.1 TypeScript receipts use the 14-field fingerprint.
 
 ```typescript
 // Keys generated by the Python SDK work in TypeScript
@@ -634,7 +683,7 @@ cd sanna-ts
 git submodule update --init        # Pull sanna-protocol spec fixtures
 npm install                        # Workspaces auto-linked
 npm run build                      # Build all 4 packages
-npm test                           # 653 tests across 37 test files
+npm test                           # 771 tests across 44 test files
 ```
 
 The `spec/` git submodule points to [sanna-ai/sanna-protocol](https://github.com/sanna-ai/sanna-protocol) and provides golden fixtures, JSON schemas, and the protocol specification used by the cross-language test suite.
