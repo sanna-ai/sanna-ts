@@ -73,40 +73,32 @@ export function computeFingerprintInput(receipt: Record<string, unknown>): strin
     constitutionHash = EMPTY_HASH;
   }
 
-  // Python treats [] and {} as falsy; JavaScript does not.
-  // Match Python semantics: empty arrays/objects → EMPTY_HASH.
-  const isTruthy = (v: unknown): boolean => {
-    if (!v) return false;
-    if (Array.isArray(v)) return v.length > 0;
-    if (typeof v === "object") return Object.keys(v as Record<string, unknown>).length > 0;
-    return true;
-  };
-
+  // null/undefined → EMPTY_HASH; any actual value (including [] or {}) → hash it.
   const enforcement = receipt.enforcement as Record<string, unknown> | undefined;
-  const enforcementHash = isTruthy(enforcement) ? hashObj(enforcement) : EMPTY_HASH;
+  const enforcementHash = enforcement != null ? hashObj(enforcement) : EMPTY_HASH;
 
   const coverage = receipt.evaluation_coverage as Record<string, unknown> | undefined;
-  const coverageHash = isTruthy(coverage) ? hashObj(coverage) : EMPTY_HASH;
+  const coverageHash = coverage != null ? hashObj(coverage) : EMPTY_HASH;
 
   const authority = receipt.authority_decisions as unknown[] | undefined;
-  const authorityHash = isTruthy(authority) ? hashObj(authority) : EMPTY_HASH;
+  const authorityHash = authority != null ? hashObj(authority) : EMPTY_HASH;
 
   const escalation = receipt.escalation_events as unknown[] | undefined;
-  const escalationHash = isTruthy(escalation) ? hashObj(escalation) : EMPTY_HASH;
+  const escalationHash = escalation != null ? hashObj(escalation) : EMPTY_HASH;
 
   const trust = receipt.source_trust_evaluations as unknown[] | undefined;
-  const trustHash = isTruthy(trust) ? hashObj(trust) : EMPTY_HASH;
+  const trustHash = trust != null ? hashObj(trust) : EMPTY_HASH;
 
   const extensions = receipt.extensions as Record<string, unknown> | undefined;
-  const extensionsHash = isTruthy(extensions) ? hashObj(extensions) : EMPTY_HASH;
+  const extensionsHash = extensions != null ? hashObj(extensions) : EMPTY_HASH;
 
   // Field 13: parent_receipts_hash
   const parentReceipts = receipt.parent_receipts as string[] | null | undefined;
-  const parentReceiptsHash = isTruthy(parentReceipts) ? hashObj(parentReceipts) : EMPTY_HASH;
+  const parentReceiptsHash = parentReceipts != null ? hashObj(parentReceipts) : EMPTY_HASH;
 
   // Field 14: workflow_id_hash
   const workflowId = receipt.workflow_id as string | null | undefined;
-  const workflowIdHash = workflowId ? hashContent(workflowId, 64) : EMPTY_HASH;
+  const workflowIdHash = workflowId != null ? hashContent(workflowId, 64) : EMPTY_HASH;
 
   return [
     correlationId,

@@ -146,20 +146,16 @@ describe("content_mode_source does NOT change fingerprint", () => {
   });
 });
 
-describe("empty parent_receipts array changes fingerprint vs null", () => {
-  it("empty array differs from absent/null parent_receipts", () => {
+describe("empty parent_receipts array produces different fingerprint than null", () => {
+  it("[] and null produce different fingerprints", () => {
     const withNull = generateReceipt({ ...baseParams() });
     const withEmpty = generateReceipt({
       ...baseParams(),
       parent_receipts: [],
     });
-    // Empty array is falsy in Python semantics so hashes to EMPTY_HASH,
-    // same as null/absent. The fingerprints should match because isTruthy([]) is false.
-    // Correction: looking at the code, empty arrays are treated as falsy (isTruthy returns false),
-    // BUT the field IS present on the receipt object, so let's verify the fingerprints.
-    // Since isTruthy([]) === false, the parentReceiptsHash will be EMPTY_HASH in both cases,
-    // meaning fingerprints are identical.
-    expect(withNull.receipt_fingerprint).toBe(withEmpty.receipt_fingerprint);
+    // [] is a real value (hash it), null/absent → EMPTY_HASH. They must differ.
+    expect(withNull.full_fingerprint).not.toBe(withEmpty.full_fingerprint);
+    expect(withNull.receipt_fingerprint).not.toBe(withEmpty.receipt_fingerprint);
   });
 });
 
