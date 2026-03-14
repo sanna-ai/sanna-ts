@@ -167,6 +167,10 @@ export {
 } from "./sinks/index.js";
 export type { CloudHTTPSinkOptions } from "./sinks/index.js";
 
+export { patchChildProcess, unpatchChildProcess } from "./interceptors/index.js";
+export type { PatchOptions } from "./interceptors/index.js";
+export { evaluateCliAuthority, checkCliInvariants } from "./interceptors/cli-authority.js";
+
 export type {
   Constitution,
   Boundary,
@@ -218,4 +222,8 @@ export type {
   DiffResult,
   DiffEntry,
   DiffSection,
+  CliPermissions,
+  CliCommand,
+  CliInvariant,
+  CliAuthorityDecision,
 } from "./types.js";

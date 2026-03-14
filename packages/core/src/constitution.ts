@@ -25,6 +25,9 @@ import type {
   AuthorityBoundaries,
   EscalationRule,
   EscalationTargetConfig,
+  CliPermissions,
+  CliCommand,
+  CliInvariant,
 } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -150,6 +153,42 @@ export function validateConstitutionData(data: Record<string, unknown>): string[
       if (!inv.rule) errors.push(`invariants[${i}].rule is required`);
       if (!VALID_ENFORCEMENT.has(String(inv.enforcement ?? ""))) {
         errors.push(`invariants[${i}].enforcement '${inv.enforcement}' is invalid`);
+      }
+    }
+  }
+
+  // CLI permissions (optional)
+  const cliPerms = data.cli_permissions;
+  if (cliPerms != null) {
+    if (typeof cliPerms !== "object" || Array.isArray(cliPerms)) {
+      errors.push("cli_permissions must be an object");
+    } else {
+      const cpObj = cliPerms as Record<string, unknown>;
+      const mode = cpObj.mode;
+      if (mode !== undefined && mode !== "strict" && mode !== "permissive") {
+        errors.push(`cli_permissions.mode '${mode}' must be 'strict' or 'permissive'`);
+      }
+      const cmds = cpObj.commands;
+      if (cmds !== undefined && !Array.isArray(cmds)) {
+        errors.push("cli_permissions.commands must be a list");
+      } else if (Array.isArray(cmds)) {
+        for (let i = 0; i < cmds.length; i++) {
+          const cmd = cmds[i] as Record<string, unknown>;
+          if (!cmd || typeof cmd !== "object") {
+            errors.push(`cli_permissions.commands[${i}] must be an object`);
+            continue;
+          }
+          if (!cmd.id) errors.push(`cli_permissions.commands[${i}].id is required`);
+          if (!cmd.binary) errors.push(`cli_permissions.commands[${i}].binary is required`);
+          const auth = cmd.authority;
+          if (auth !== undefined && auth !== "can_execute" && auth !== "must_escalate" && auth !== "cannot_execute") {
+            errors.push(`cli_permissions.commands[${i}].authority '${auth}' is invalid`);
+          }
+        }
+      }
+      const invs = cpObj.invariants;
+      if (invs !== undefined && !Array.isArray(invs)) {
+        errors.push("cli_permissions.invariants must be a list");
       }
     }
   }
@@ -298,6 +337,47 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     };
   }
 
+  // CLI permissions
+  const cliPermsData = data.cli_permissions as Record<string, unknown> | undefined;
+  let cliPermissions: CliPermissions | null = null;
+  if (cliPermsData && typeof cliPermsData === "object") {
+    const commands: CliCommand[] = [];
+    const rawCommands = (cliPermsData.commands as Record<string, unknown>[]) ?? [];
+    for (const cmd of rawCommands) {
+      if (cmd && typeof cmd === "object") {
+        commands.push({
+          id: (cmd.id as string) ?? "",
+          binary: (cmd.binary as string) ?? "",
+          authority: (cmd.authority as "can_execute" | "must_escalate" | "cannot_execute") ?? "can_execute",
+          argv_pattern: (cmd.argv_pattern as string) ?? "*",
+          description: (cmd.description as string) ?? "",
+          escalation_target: cmd.escalation_target as string | undefined,
+        });
+      }
+    }
+
+    const cliInvariants: CliInvariant[] = [];
+    const rawInvariants = (cliPermsData.invariants as Record<string, unknown>[]) ?? [];
+    for (const inv of rawInvariants) {
+      if (inv && typeof inv === "object") {
+        cliInvariants.push({
+          id: (inv.id as string) ?? "",
+          description: (inv.description as string) ?? "",
+          verdict: (inv.verdict as "halt" | "warn") ?? "halt",
+          pattern: inv.pattern as string | undefined,
+          condition: inv.condition as string | undefined,
+        });
+      }
+    }
+
+    cliPermissions = {
+      mode: (cliPermsData.mode as "strict" | "permissive") ?? "strict",
+      justification_required: (cliPermsData.justification_required as boolean) ?? true,
+      commands,
+      invariants: cliInvariants,
+    };
+  }
+
   // Trusted sources
   let trustedSources: TrustedSources | null = null;
   const tsData = data.trusted_sources as Record<string, unknown> | undefined;
@@ -320,6 +400,7 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     invariants,
     policy_hash: (data.policy_hash as string) ?? null,
     authority_boundaries: authorityBoundaries,
+    cli_permissions: cliPermissions,
     trusted_sources: trustedSources,
   };
 }
@@ -416,6 +497,34 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
     };
     result.escalation_targets = {
       default: c.authority_boundaries.default_escalation,
+    };
+  }
+
+  if (c.cli_permissions) {
+    result.cli_permissions = {
+      mode: c.cli_permissions.mode,
+      justification_required: c.cli_permissions.justification_required,
+      commands: c.cli_permissions.commands.map((cmd) => {
+        const plain: Record<string, unknown> = {
+          id: cmd.id,
+          binary: cmd.binary,
+          authority: cmd.authority,
+        };
+        if (cmd.argv_pattern !== undefined) plain.argv_pattern = cmd.argv_pattern;
+        if (cmd.description !== undefined) plain.description = cmd.description;
+        if (cmd.escalation_target !== undefined) plain.escalation_target = cmd.escalation_target;
+        return plain;
+      }),
+      invariants: c.cli_permissions.invariants.map((inv) => {
+        const plain: Record<string, unknown> = {
+          id: inv.id,
+          description: inv.description,
+          verdict: inv.verdict,
+        };
+        if (inv.pattern !== undefined) plain.pattern = inv.pattern;
+        if (inv.condition !== undefined) plain.condition = inv.condition;
+        return plain;
+      }),
     };
   }
 

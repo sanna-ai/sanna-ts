@@ -91,7 +91,43 @@ export interface Constitution {
   invariants: Invariant[];
   policy_hash: string | null;
   authority_boundaries: AuthorityBoundaries | null;
+  cli_permissions: CliPermissions | null;
   trusted_sources: TrustedSources | null;
+}
+
+// ── CLI Permissions types ────────────────────────────────────────────
+
+export interface CliCommand {
+  id: string;
+  binary: string;
+  authority: "can_execute" | "must_escalate" | "cannot_execute";
+  argv_pattern?: string;  // default "*"
+  description?: string;
+  escalation_target?: string;
+}
+
+export interface CliInvariant {
+  id: string;
+  description: string;
+  verdict: "halt" | "warn";
+  pattern?: string;
+  condition?: string;
+}
+
+export interface CliPermissions {
+  mode: "strict" | "permissive";
+  justification_required: boolean;
+  commands: CliCommand[];
+  invariants: CliInvariant[];
+}
+
+// ── CLI Authority types ──────────────────────────────────────────────
+
+export interface CliAuthorityDecision {
+  decision: "halt" | "allow" | "escalate";
+  reason: string;
+  rule_id?: string;
+  escalation_target?: string;
 }
 
 // ── Authority evaluation types ───────────────────────────────────────
@@ -175,6 +211,12 @@ export interface Receipt {
   workflow_id?: string | null;
   content_mode?: ContentMode;
   content_mode_source?: string | null;
+  event_type?: string | null;
+  context_limitation?: string | null;
+  input_hash?: string | null;
+  reasoning_hash?: string | null;
+  action_hash?: string | null;
+  assurance?: "full" | "partial" | null;
   receipt_signature?: ReceiptSignature;
   constitution_ref?: ConstitutionRef;
   enforcement?: Enforcement;

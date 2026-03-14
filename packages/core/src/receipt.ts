@@ -251,6 +251,12 @@ export interface ReceiptParams {
   workflow_id?: string | null;
   content_mode?: ContentMode;
   content_mode_source?: string | null;
+  event_type?: string | null;
+  context_limitation?: string | null;
+  input_hash?: string | null;
+  reasoning_hash?: string | null;
+  action_hash?: string | null;
+  assurance?: "full" | "partial" | null;
 }
 
 /**
@@ -319,6 +325,12 @@ export function generateReceipt(params: ReceiptParams): Receipt {
   // Metadata fields (do NOT participate in fingerprint)
   if (params.content_mode != null) receiptBase.content_mode = params.content_mode;
   if (params.content_mode_source != null) receiptBase.content_mode_source = params.content_mode_source;
+  if (params.event_type !== undefined) receiptBase.event_type = params.event_type;
+  if (params.context_limitation !== undefined) receiptBase.context_limitation = params.context_limitation;
+  if (params.input_hash !== undefined) receiptBase.input_hash = params.input_hash;
+  if (params.reasoning_hash !== undefined) receiptBase.reasoning_hash = params.reasoning_hash;
+  if (params.action_hash !== undefined) receiptBase.action_hash = params.action_hash;
+  if (params.assurance !== undefined) receiptBase.assurance = params.assurance;
 
   // Compute fingerprints
   const { receipt_fingerprint, full_fingerprint } = computeFingerprints(receiptBase);

@@ -1,0 +1,35 @@
+sanna_constitution: "0.1.0"
+
+identity:
+  agent_name: test-cli-permissive
+  domain: cli-testing
+  description: Test constitution for CLI interception in permissive mode
+
+provenance:
+  authored_by: test-author
+  approved_by:
+    - test-approver
+  approval_date: "2026-01-01"
+  approval_method: manual
+
+boundaries:
+  - id: B001
+    description: No unauthorized actions
+    category: safety
+    severity: critical
+
+trust_tiers:
+  autonomous: []
+  requires_approval: []
+  prohibited: []
+
+cli_permissions:
+  mode: permissive
+  justification_required: false
+  commands:
+    - id: CLI001
+      binary: rm
+      authority: cannot_execute
+      argv_pattern: "-rf *"
+      description: Block recursive force delete
+  invariants: []
