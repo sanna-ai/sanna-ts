@@ -1,0 +1,64 @@
+sanna_constitution: "0.1.0"
+
+identity:
+  agent_name: test-api-agent
+  domain: api-testing
+  description: Test constitution for API fetch interception
+
+provenance:
+  authored_by: test-author
+  approved_by:
+    - test-approver
+  approval_date: "2026-01-01"
+  approval_method: manual
+
+boundaries:
+  - id: B001
+    description: No unauthorized API access
+    category: safety
+    severity: critical
+
+trust_tiers:
+  autonomous: []
+  requires_approval: []
+  prohibited: []
+
+api_permissions:
+  mode: strict
+  justification_required: true
+  endpoints:
+    - id: API002
+      url_pattern: "https://api.example.com/admin/*"
+      authority: cannot_execute
+      methods: ["*"]
+      description: Admin endpoints blocked
+    - id: API001
+      url_pattern: "https://api.example.com/*"
+      authority: can_execute
+      methods: ["GET", "POST"]
+      description: Example API (read/write)
+    - id: API003
+      url_pattern: "https://internal.corp.com/*"
+      authority: must_escalate
+      methods: ["*"]
+      description: Internal APIs require escalation
+      escalation_target: security-team
+    - id: API004
+      url_pattern: "https://api.example.com/users"
+      authority: can_execute
+      methods: ["GET"]
+      description: Users endpoint (read-only)
+    - id: API005
+      url_pattern: "https://public.cdn.com/*"
+      authority: can_execute
+      methods: ["GET"]
+      description: Public CDN
+  invariants:
+    - id: APINV001
+      description: No API keys in URLs
+      verdict: halt
+      pattern: "[?&]api_key="
+    - id: APINV002
+      description: Warn on non-HTTPS
+      verdict: warn
+      pattern: "^http://"

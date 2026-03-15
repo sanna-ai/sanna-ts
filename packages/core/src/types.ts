@@ -92,6 +92,7 @@ export interface Constitution {
   policy_hash: string | null;
   authority_boundaries: AuthorityBoundaries | null;
   cli_permissions: CliPermissions | null;
+  api_permissions: ApiPermissions | null;
   trusted_sources: TrustedSources | null;
 }
 
@@ -124,6 +125,40 @@ export interface CliPermissions {
 // ── CLI Authority types ──────────────────────────────────────────────
 
 export interface CliAuthorityDecision {
+  decision: "halt" | "allow" | "escalate";
+  reason: string;
+  rule_id?: string;
+  escalation_target?: string;
+}
+
+// ── API Permissions types ────────────────────────────────────────────
+
+export interface ApiEndpoint {
+  id: string;
+  url_pattern: string;
+  authority: "can_execute" | "must_escalate" | "cannot_execute";
+  methods?: string[];  // default ["*"]
+  description?: string;
+  escalation_target?: string;
+}
+
+export interface ApiInvariant {
+  id: string;
+  description: string;
+  verdict: "halt" | "warn";
+  pattern?: string;
+}
+
+export interface ApiPermissions {
+  mode: "strict" | "permissive";
+  justification_required: boolean;
+  endpoints: ApiEndpoint[];
+  invariants: ApiInvariant[];
+}
+
+// ── API Authority types ──────────────────────────────────────────────
+
+export interface ApiAuthorityDecision {
   decision: "halt" | "allow" | "escalate";
   reason: string;
   rule_id?: string;

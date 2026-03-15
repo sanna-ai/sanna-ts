@@ -28,6 +28,9 @@ import type {
   CliPermissions,
   CliCommand,
   CliInvariant,
+  ApiPermissions,
+  ApiEndpoint,
+  ApiInvariant,
 } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -189,6 +192,42 @@ export function validateConstitutionData(data: Record<string, unknown>): string[
       const invs = cpObj.invariants;
       if (invs !== undefined && !Array.isArray(invs)) {
         errors.push("cli_permissions.invariants must be a list");
+      }
+    }
+  }
+
+  // API permissions (optional)
+  const apiPerms = data.api_permissions;
+  if (apiPerms != null) {
+    if (typeof apiPerms !== "object" || Array.isArray(apiPerms)) {
+      errors.push("api_permissions must be an object");
+    } else {
+      const apObj = apiPerms as Record<string, unknown>;
+      const apMode = apObj.mode;
+      if (apMode !== undefined && apMode !== "strict" && apMode !== "permissive") {
+        errors.push(`api_permissions.mode '${apMode}' must be 'strict' or 'permissive'`);
+      }
+      const eps = apObj.endpoints;
+      if (eps !== undefined && !Array.isArray(eps)) {
+        errors.push("api_permissions.endpoints must be a list");
+      } else if (Array.isArray(eps)) {
+        for (let i = 0; i < eps.length; i++) {
+          const ep = eps[i] as Record<string, unknown>;
+          if (!ep || typeof ep !== "object") {
+            errors.push(`api_permissions.endpoints[${i}] must be an object`);
+            continue;
+          }
+          if (!ep.id) errors.push(`api_permissions.endpoints[${i}].id is required`);
+          if (!ep.url_pattern) errors.push(`api_permissions.endpoints[${i}].url_pattern is required`);
+          const epAuth = ep.authority;
+          if (epAuth !== undefined && epAuth !== "can_execute" && epAuth !== "must_escalate" && epAuth !== "cannot_execute") {
+            errors.push(`api_permissions.endpoints[${i}].authority '${epAuth}' is invalid`);
+          }
+        }
+      }
+      const apInvs = apObj.invariants;
+      if (apInvs !== undefined && !Array.isArray(apInvs)) {
+        errors.push("api_permissions.invariants must be a list");
       }
     }
   }
@@ -378,6 +417,46 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     };
   }
 
+  // API permissions
+  const apiPermsData = data.api_permissions as Record<string, unknown> | undefined;
+  let apiPermissions: ApiPermissions | null = null;
+  if (apiPermsData && typeof apiPermsData === "object") {
+    const endpoints: ApiEndpoint[] = [];
+    const rawEndpoints = (apiPermsData.endpoints as Record<string, unknown>[]) ?? [];
+    for (const ep of rawEndpoints) {
+      if (ep && typeof ep === "object") {
+        endpoints.push({
+          id: (ep.id as string) ?? "",
+          url_pattern: (ep.url_pattern as string) ?? "",
+          authority: (ep.authority as "can_execute" | "must_escalate" | "cannot_execute") ?? "can_execute",
+          methods: (ep.methods as string[]) ?? ["*"],
+          description: (ep.description as string) ?? "",
+          escalation_target: ep.escalation_target as string | undefined,
+        });
+      }
+    }
+
+    const apiInvariants: ApiInvariant[] = [];
+    const rawApiInvariants = (apiPermsData.invariants as Record<string, unknown>[]) ?? [];
+    for (const inv of rawApiInvariants) {
+      if (inv && typeof inv === "object") {
+        apiInvariants.push({
+          id: (inv.id as string) ?? "",
+          description: (inv.description as string) ?? "",
+          verdict: (inv.verdict as "halt" | "warn") ?? "halt",
+          pattern: inv.pattern as string | undefined,
+        });
+      }
+    }
+
+    apiPermissions = {
+      mode: (apiPermsData.mode as "strict" | "permissive") ?? "strict",
+      justification_required: (apiPermsData.justification_required as boolean) ?? true,
+      endpoints,
+      invariants: apiInvariants,
+    };
+  }
+
   // Trusted sources
   let trustedSources: TrustedSources | null = null;
   const tsData = data.trusted_sources as Record<string, unknown> | undefined;
@@ -401,6 +480,7 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     policy_hash: (data.policy_hash as string) ?? null,
     authority_boundaries: authorityBoundaries,
     cli_permissions: cliPermissions,
+    api_permissions: apiPermissions,
     trusted_sources: trustedSources,
   };
 }
@@ -523,6 +603,33 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
         };
         if (inv.pattern !== undefined) plain.pattern = inv.pattern;
         if (inv.condition !== undefined) plain.condition = inv.condition;
+        return plain;
+      }),
+    };
+  }
+
+  if (c.api_permissions) {
+    result.api_permissions = {
+      mode: c.api_permissions.mode,
+      justification_required: c.api_permissions.justification_required,
+      endpoints: c.api_permissions.endpoints.map((ep) => {
+        const plain: Record<string, unknown> = {
+          id: ep.id,
+          url_pattern: ep.url_pattern,
+          authority: ep.authority,
+        };
+        if (ep.methods !== undefined) plain.methods = ep.methods;
+        if (ep.description !== undefined) plain.description = ep.description;
+        if (ep.escalation_target !== undefined) plain.escalation_target = ep.escalation_target;
+        return plain;
+      }),
+      invariants: c.api_permissions.invariants.map((inv) => {
+        const plain: Record<string, unknown> = {
+          id: inv.id,
+          description: inv.description,
+          verdict: inv.verdict,
+        };
+        if (inv.pattern !== undefined) plain.pattern = inv.pattern;
         return plain;
       }),
     };
