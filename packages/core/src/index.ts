@@ -171,6 +171,10 @@ export { patchChildProcess, unpatchChildProcess } from "./interceptors/index.js"
 export type { PatchOptions } from "./interceptors/index.js";
 export { evaluateCliAuthority, checkCliInvariants } from "./interceptors/cli-authority.js";
 
+export { patchFetch, unpatchFetch } from "./interceptors/index.js";
+export type { HttpPatchOptions } from "./interceptors/index.js";
+export { evaluateApiAuthority, checkApiInvariants } from "./interceptors/api-authority.js";
+
 export type {
   Constitution,
   Boundary,
@@ -226,4 +230,8 @@ export type {
   CliCommand,
   CliInvariant,
   CliAuthorityDecision,
+  ApiPermissions,
+  ApiEndpoint,
+  ApiInvariant,
+  ApiAuthorityDecision,
 } from "./types.js";

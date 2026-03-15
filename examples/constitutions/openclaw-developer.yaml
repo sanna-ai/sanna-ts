@@ -274,3 +274,29 @@ invariants:
     enforcement: warn
     description: "Escalate execution of script files through exec for review"
     severity: high
+
+cli_permissions:
+  mode: permissive
+  justification_required: false
+  commands:
+    - id: CLI_EXEC
+      binary: exec
+      authority: can_execute
+      argv_pattern: "*"
+      description: General command execution
+    - id: CLI_BASH
+      binary: bash
+      authority: can_execute
+      argv_pattern: "*"
+      description: Bash shell
+    - id: CLI_PYTHON
+      binary: python
+      authority: can_execute
+      argv_pattern: "*"
+      description: Python runtime
+    - id: CLI_NODE
+      binary: node
+      authority: can_execute
+      argv_pattern: "*"
+      description: Node.js runtime
+  invariants: []

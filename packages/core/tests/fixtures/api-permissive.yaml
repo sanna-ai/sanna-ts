@@ -1,0 +1,35 @@
+sanna_constitution: "0.1.0"
+
+identity:
+  agent_name: test-api-permissive
+  domain: api-testing
+  description: Test constitution for API interception in permissive mode
+
+provenance:
+  authored_by: test-author
+  approved_by:
+    - test-approver
+  approval_date: "2026-01-01"
+  approval_method: manual
+
+boundaries:
+  - id: B001
+    description: No unauthorized actions
+    category: safety
+    severity: critical
+
+trust_tiers:
+  autonomous: []
+  requires_approval: []
+  prohibited: []
+
+api_permissions:
+  mode: permissive
+  justification_required: false
+  endpoints:
+    - id: API001
+      url_pattern: "https://api.example.com/admin/*"
+      authority: cannot_execute
+      methods: ["*"]
+      description: Block admin endpoints
+  invariants: []
