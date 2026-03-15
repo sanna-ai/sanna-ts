@@ -186,4 +186,52 @@ authority_boundaries:
 escalation_targets:
   default: log
 
+cli_permissions:
+  mode: permissive
+  justification_required: false
+  commands:
+    - id: CLI_GIT
+      binary: git
+      authority: can_execute
+      argv_pattern: "*"
+      description: Git version control
+    - id: CLI_NPM
+      binary: npm
+      authority: can_execute
+      argv_pattern: "*"
+      description: Node.js package manager
+    - id: CLI_NODE
+      binary: node
+      authority: can_execute
+      argv_pattern: "*"
+      description: Node.js runtime
+    - id: CLI_PYTHON
+      binary: python
+      authority: can_execute
+      argv_pattern: "*"
+      description: Python runtime
+    - id: CLI_DOCKER
+      binary: docker
+      authority: must_escalate
+      argv_pattern: "*"
+      description: Docker commands require approval
+      escalation_target: tech-lead@team.dev
+  invariants: []
+
+api_permissions:
+  mode: permissive
+  justification_required: false
+  endpoints:
+    - id: API_GITHUB
+      url_pattern: "https://api.github.com/*"
+      authority: can_execute
+      methods: ["*"]
+      description: GitHub API
+    - id: API_NPM
+      url_pattern: "https://registry.npmjs.org/*"
+      authority: can_execute
+      methods: ["GET"]
+      description: npm registry (read-only)
+  invariants: []
+
 policy_hash: null

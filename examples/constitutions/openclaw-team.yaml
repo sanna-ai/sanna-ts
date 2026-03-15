@@ -226,3 +226,15 @@ invariants:
     enforcement: warn
     description: "Escalate execution of script files through exec for review"
     severity: high
+
+cli_permissions:
+  mode: strict
+  justification_required: true
+  commands: []
+  invariants: []
+
+api_permissions:
+  mode: strict
+  justification_required: true
+  endpoints: []
+  invariants: []
