@@ -105,6 +105,8 @@ export async function runDemo(): Promise<void> {
       document_id: `${signed.identity.agent_name}/1.0`,
       policy_hash: signed.policy_hash,
     },
+    enforcementSurface: "middleware",
+    invariantsScope: "full",
   });
   console.log(`4. Generated receipt: ${receipt.receipt_id.slice(0, 24)}...`);
   console.log(`   Status: ${receipt.status} (${receipt.checks_passed}/${receipt.checks_passed + receipt.checks_failed} passed)`);

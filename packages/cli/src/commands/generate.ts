@@ -44,6 +44,8 @@ export async function runGenerate(
     constitution_ref: trace.constitution_ref as Record<string, unknown> | undefined,
     enforcement: trace.enforcement as Record<string, unknown> | undefined,
     extensions: trace.extensions as Record<string, unknown> | undefined,
+    enforcementSurface: "middleware",
+    invariantsScope: "full",
   });
 
   if (options.signingKey) {
