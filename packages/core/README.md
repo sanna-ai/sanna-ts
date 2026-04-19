@@ -2,7 +2,7 @@
 
 TypeScript SDK for the [Sanna protocol](https://github.com/sanna-ai/sanna-protocol) — an open AI governance framework that enforces constitutional boundaries on AI agents through cryptographic receipts. Constitutions define what an agent can and cannot do; receipts provide tamper-evident proof that every action was evaluated against those rules.
 
-Implements **Sanna Protocol v1.1**.
+Implements **Sanna Protocol v1.3**.
 
 ## Install
 
