@@ -1119,3 +1119,42 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     expect(enf.reason).toBeDefined();
   });
 });
+
+// ── 17. HALT-regression guard (SAN-213 3B gap closure) ────────────────
+
+describe("patchChildProcess — HALT-regression guard", () => {
+  it("halt-regression-guard: 'HALT' never appears as a status value in any receipt", async () => {
+    // Exercise the interceptor through allow + halt cases, then assert
+    // the literal "HALT" string never appears as a status value in any receipt.
+    // This guards against future regression where someone re-introduces "HALT"
+    // as a status value in the serialized receipt output.
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+
+    // Case 1: allow
+    cp.execSync("echo allow-case", { encoding: "utf-8" });
+
+    // Case 2: halt
+    try {
+      cp.execSync("curl http://example.com", { encoding: "utf-8" });
+    } catch { /* expected */ }
+
+    // Assert HALT never appears in any receipt
+    for (const r of sink.receipts) {
+      const json = JSON.stringify(r);
+      expect(json).not.toContain('"HALT"');
+      expect(json).not.toContain('"status":"HALT"');
+    }
+
+    // Verify the halt receipt actually has FAIL status (not HALT)
+    const haltReceipt = sink.receipts.find((r) => r.event_type === "cli_invocation_halted");
+    expect(haltReceipt).toBeDefined();
+    expect(haltReceipt!.status).toBe("FAIL");
+  });
+});

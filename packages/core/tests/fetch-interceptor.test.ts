@@ -910,3 +910,36 @@ describe("patchFetch — v1.3 surface labels and enforcement vocabulary", () => 
     expect(enf.reason).toBeDefined();
   });
 });
+
+// ── 19. HALT-regression guard (SAN-213 3B gap closure) ────────────────
+
+describe("patchFetch — HALT-regression guard", () => {
+  it("halt-regression-guard: 'HALT' never appears as a status value in any receipt", async () => {
+    // Exercise the interceptor through allow + halt + escalate cases, then assert
+    // the literal "HALT" string never appears as a status value in any receipt.
+    // This guards against future regression where someone re-introduces "HALT"
+    // as a status value in the serialized receipt output.
+    const sink = makeSink();
+    await patchWithMock(STRICT_CONSTITUTION, sink);
+
+    // Case 1: allow
+    await fetch("https://api.example.com/data");
+
+    // Case 2: halt (strict mode, not matched)
+    try {
+      await fetch("https://unknown.com/blocked");
+    } catch { /* expected */ }
+
+    // Assert HALT never appears in any receipt
+    for (const r of sink.receipts) {
+      const json = JSON.stringify(r);
+      expect(json).not.toContain('"HALT"');
+      expect(json).not.toContain('"status":"HALT"');
+    }
+
+    // Verify the halt receipt has FAIL status (not HALT)
+    const haltReceipt = sink.receipts.find((r) => r.event_type === "api_invocation_halted");
+    expect(haltReceipt).toBeDefined();
+    expect(haltReceipt!.status).toBe("FAIL");
+  });
+});
