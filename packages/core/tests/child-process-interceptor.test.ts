@@ -386,8 +386,9 @@ describe("patchChildProcess — authority enforcement", () => {
 
     // rm file.txt matches can_execute (CLI003)
     // Actually we can't test rm on a file that doesn't exist without it failing.
-    // Instead verify the receipt shows the right rule_id
-    expect(sink.receipts[0].outputs).toHaveProperty("rule_id", "CLI002");
+    // Instead verify the receipt shows the correct outputs (exit_code only)
+    expect(sink.receipts[0].outputs).not.toHaveProperty("rule_id");
+    expect(sink.receipts[0].outputs).not.toHaveProperty("decision");
   });
 });
 
@@ -599,8 +600,8 @@ describe("patchChildProcess — audit mode", () => {
       // rm itself may fail, that's fine — the interceptor let it through
     }
     expect(sink.receipts.length).toBe(1);
-    // In audit mode, the decision field should still show halt
-    expect(sink.receipts[0].outputs).toHaveProperty("decision", "halt");
+    // In audit mode, the enforcement.action should still show the normalized decision
+    expect((sink.receipts[0] as unknown as Record<string, unknown>).enforcement).toMatchObject({ action: "halted" });
   });
 
   it("passthrough mode generates receipts without enforcement", async () => {
@@ -660,7 +661,10 @@ describe("patchChildProcess — anti-enumeration", () => {
     }
 
     expect(sink.receipts.length).toBe(1);
-    expect(sink.receipts[0].status).toBe("HALT");
+    // enforcement.action="halted" overrides computed status from PASS to FAIL
+    expect(sink.receipts[0].status).toBe("FAIL");
+    // HALT must never appear as a status value
+    expect(JSON.stringify(sink.receipts[0])).not.toContain('"HALT"');
   });
 });
 
@@ -1012,5 +1016,106 @@ describe("generateReceipt — new triad fields", () => {
     expect("action_hash" in receipt).toBe(false);
     expect("assurance" in receipt).toBe(false);
     expect("context_limitation" in receipt).toBe(false);
+  });
+});
+
+// ── 16. v1.3 surface labels and past-participle vocabulary (SAN-213) ──
+
+describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary", () => {
+  it("emits enforcement_surface = cli_interceptor on all receipts", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    cp.execSync("echo surface-test", { encoding: "utf-8" });
+    expect((sink.receipts[0] as unknown as Record<string, unknown>).enforcement_surface).toBe("cli_interceptor");
+  });
+
+  it("emits invariants_scope = authority_only on all receipts", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    cp.execSync("echo scope-test", { encoding: "utf-8" });
+    expect((sink.receipts[0] as unknown as Record<string, unknown>).invariants_scope).toBe("authority_only");
+  });
+
+  it("allowed command: enforcement.action is past-participle 'allowed'", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    cp.execSync("echo hello", { encoding: "utf-8" });
+    const enf = (sink.receipts[0] as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
+    expect(enf.action).toBe("allowed");
+  });
+
+  it("halted command: enforcement.action is past-participle 'halted'", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl http://example.com", { encoding: "utf-8" }); } catch { /* expected */ }
+    const enf = (sink.receipts[0] as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
+    expect(enf.action).toBe("halted");
+    expect(enf.action).not.toBe("halt");
+  });
+
+  it("allowed command: status is PASS", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    cp.execSync("echo hello", { encoding: "utf-8" });
+    expect(sink.receipts[0].status).toBe("PASS");
+  });
+
+  it("halted command: status is FAIL (not HALT)", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl http://example.com", { encoding: "utf-8" }); } catch { /* expected */ }
+    expect(sink.receipts[0].status).toBe("FAIL");
+    expect(JSON.stringify(sink.receipts[0])).not.toContain('"HALT"');
+  });
+
+  it("decision/reason/rule_id are in enforcement block, not outputs", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+    const cp = require_("node:child_process");
+    cp.execSync("echo hello", { encoding: "utf-8" });
+    const receipt = sink.receipts[0] as unknown as Record<string, unknown>;
+    // outputs should only have exit_code
+    expect(receipt.outputs).not.toHaveProperty("decision");
+    expect(receipt.outputs).not.toHaveProperty("reason");
+    expect(receipt.outputs).not.toHaveProperty("rule_id");
+    // enforcement block should exist with action/reason
+    const enf = receipt.enforcement as Record<string, unknown>;
+    expect(enf).toBeDefined();
+    expect(enf.action).toBeDefined();
+    expect(enf.reason).toBeDefined();
   });
 });

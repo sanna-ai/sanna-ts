@@ -390,6 +390,40 @@ describe("sanna_generate_receipt", () => {
       await cleanup();
     }
   });
+
+  it("should emit enforcement_surface = middleware [SAN-213]", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_generate_receipt",
+        arguments: {
+          query: "Test",
+          response: "Test response",
+        },
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.enforcement_surface).toBe("middleware");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should emit invariants_scope = full [SAN-213]", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_generate_receipt",
+        arguments: {
+          query: "Test",
+          response: "Test response",
+        },
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.invariants_scope).toBe("full");
+    } finally {
+      await cleanup();
+    }
+  });
 });
 
 describe("sanna_verify_receipt", () => {
@@ -900,6 +934,20 @@ describe("sanna_list_checks", () => {
         expect(check.default_severity).toBeTruthy();
         expect(check.default_enforcement).toBeTruthy();
       }
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("should report checks_version = 8 (from core CHECKS_VERSION, not stale local) [SAN-213]", async () => {
+    const { client, cleanup } = await createTestClient();
+    try {
+      const result = await client.callTool({
+        name: "sanna_list_checks",
+        arguments: {},
+      });
+      const data = JSON.parse((result.content as any)[0].text);
+      expect(data.checks_version).toBe("8");
     } finally {
       await cleanup();
     }

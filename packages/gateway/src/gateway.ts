@@ -732,6 +732,8 @@ export class SannaGateway {
           receipt_id: receipt.receipt_id,
           status: receipt.status,
           receipt_triad: triad,
+          enforcement_surface: (receipt as Record<string, unknown>).enforcement_surface,
+          invariants_scope: (receipt as Record<string, unknown>).invariants_scope,
         },
       }),
     });

@@ -402,3 +402,100 @@ describe("v1.3 16-field fingerprint (SAN-213)", () => {
     expect(parts[15]).toBe(EMPTY_HASH);
   });
 });
+
+describe("v1.3 enforcement override (SAN-213 AC 8)", () => {
+  it("override-1: halted + computed PASS → FAIL", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      enforcement: { action: "halted", reason: "blocked" },
+    });
+    expect(receipt.status).toBe("FAIL");
+  });
+
+  it("override-2: warned + computed PASS → WARN", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      enforcement: { action: "warned", reason: "warning" },
+    });
+    expect(receipt.status).toBe("WARN");
+  });
+
+  it("override-3: escalated + computed PASS → WARN", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      enforcement: { action: "escalated", reason: "escalated" },
+    });
+    expect(receipt.status).toBe("WARN");
+  });
+
+  it("override-4: allowed + computed PASS → PASS (no change)", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      enforcement: { action: "allowed", reason: "permitted" },
+    });
+    expect(receipt.status).toBe("PASS");
+  });
+
+  it("override-5: halted + checks-computed WARN → WARN (override does not fire)", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [{ check_id: "c1", passed: false, severity: "warn", message: "warn", evidence: null }],
+      enforcement: { action: "halted", reason: "blocked" },
+    });
+    // computed status is WARN from the failing WARN-severity check;
+    // override only fires when computed status is PASS — so status stays WARN
+    expect(receipt.status).toBe("WARN");
+  });
+
+  it("override-6: halted + checks-computed FAIL → FAIL (no change)", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [{ check_id: "c1", passed: false, severity: "critical", message: "error", evidence: null }],
+      enforcement: { action: "halted", reason: "blocked" },
+    });
+    expect(receipt.status).toBe("FAIL");
+  });
+
+  it("override-7: no enforcement param → status purely from checks", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    expect(receipt.status).toBe("PASS");
+  });
+
+  it("override-8: AC 8 integrity — action=halted can never produce status=PASS", async () => {
+    // Structural guarantee: enforcement.action="halted" + status="PASS" is impossible
+    const inputs = [
+      { checks: [], enforcement: { action: "halted" } },
+      { checks: [{ check_id: "c1", passed: true, severity: "critical", message: "", evidence: null }], enforcement: { action: "halted" } },
+    ];
+    for (const params of inputs) {
+      const receipt = await generateReceipt({
+        correlation_id: "test",
+        inputs: {},
+        outputs: {},
+        ...params,
+      } as any);
+      expect(receipt.status).not.toBe("PASS");
+    }
+  });
+});
