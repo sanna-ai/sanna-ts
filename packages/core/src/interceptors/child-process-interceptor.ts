@@ -168,16 +168,28 @@ function emitReceipt(params: {
   eventType: string; contextLimitation: string;
   exitCode: number | null; halted: boolean;
 }): void {
+  const ENFORCEMENT_ACTION_MAP: Record<string, string> = {
+    halt: "halted",
+    escalate: "escalated",
+    allow: "allowed",
+  };
+  const enforcementAction = ENFORCEMENT_ACTION_MAP[params.decision] ?? "allowed";
+
   const opts = _state.options!;
   const receipt = generateReceipt({
     correlation_id: randomUUID(),
     inputs: { binary: params.binary, argv: params.argv, agent_id: opts.agentId },
-    outputs: {
-      decision: params.decision, reason: params.reason,
-      rule_id: params.ruleId ?? null, exit_code: params.exitCode,
-    },
+    outputs: { exit_code: params.exitCode },
     checks: [],
-    status: params.halted ? "HALT" : "PASS",
+    enforcement: {
+      action: enforcementAction,
+      reason: params.reason,
+      failed_checks: [],
+      enforcement_mode: opts.mode ?? "enforce",
+      timestamp: new Date().toISOString(),
+    },
+    enforcementSurface: "cli_interceptor",
+    invariantsScope: "authority_only",
     event_type: params.eventType,
     context_limitation: params.contextLimitation,
     input_hash: params.inputHash,

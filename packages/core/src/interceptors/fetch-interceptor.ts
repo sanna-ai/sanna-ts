@@ -287,16 +287,28 @@ async function emitHttpReceipt(params: {
   eventType: string; contextLimitation: string;
   statusCode: number | null; halted: boolean;
 }): Promise<void> {
+  const ENFORCEMENT_ACTION_MAP: Record<string, string> = {
+    halt: "halted",
+    escalate: "escalated",
+    allow: "allowed",
+  };
+  const enforcementAction = ENFORCEMENT_ACTION_MAP[params.decision] ?? "allowed";
+
   const opts = _state.options!;
   const receipt = generateReceipt({
     correlation_id: randomUUID(),
     inputs: { method: params.method, url: params.url, agent_id: opts.agentId },
-    outputs: {
-      decision: params.decision, reason: params.reason,
-      rule_id: params.ruleId ?? null, status_code: params.statusCode,
-    },
+    outputs: { status_code: params.statusCode },
     checks: [],
-    status: params.halted ? "HALT" : "PASS",
+    enforcement: {
+      action: enforcementAction,
+      reason: params.reason,
+      failed_checks: [],
+      enforcement_mode: opts.mode ?? "enforce",
+      timestamp: new Date().toISOString(),
+    },
+    enforcementSurface: "http_interceptor",
+    invariantsScope: "authority_only",
     event_type: params.eventType,
     context_limitation: params.contextLimitation,
     input_hash: params.inputHash,
