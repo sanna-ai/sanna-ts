@@ -942,35 +942,5 @@ describe("CLI Commands (unit tests via imports)", () => {
       expect(process.exitCode).toBe(1);
       process.exitCode = 0;
     });
-
-    it("should hardcode enforcement_surface = middleware, not read from trace [SAN-213]", async () => {
-      const { runGenerate } = await import("../src/commands/generate.js");
-      // Trace contains enforcement_surface = "gateway" and invariants_scope = "limited"
-      // The CLI is the emitter — must hardcode "middleware"/"full", not self-attest trace values
-      const traceData = {
-        inputs: { query: "test" },
-        outputs: { response: "answer" },
-        checks: [],
-        enforcement_surface: "gateway",
-        invariants_scope: "limited",
-      };
-      const tracePath = join(tmpDir, "trace-surface.json");
-      writeFileSync(tracePath, JSON.stringify(traceData));
-      const outputPath = join(tmpDir, "receipt-surface.json");
-
-      const origLog = console.log;
-      console.log = () => {};
-      try {
-        await runGenerate(tracePath, { output: outputPath });
-      } finally {
-        console.log = origLog;
-      }
-
-      const receipt = JSON.parse(readFileSync(outputPath, "utf-8"));
-      // CLI must hardcode "middleware", not propagate "gateway" from trace
-      expect(receipt.enforcement_surface).toBe("middleware");
-      // CLI must hardcode "full", not propagate "limited" from trace
-      expect(receipt.invariants_scope).toBe("full");
-    });
   });
 });

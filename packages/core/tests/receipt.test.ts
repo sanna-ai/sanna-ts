@@ -453,10 +453,10 @@ describe("v1.3 enforcement override (SAN-213 AC 8)", () => {
       correlation_id: "test",
       inputs: {},
       outputs: {},
-      checks: [{ check_id: "c1", passed: false, severity: "warn", message: "warn", evidence: null }],
+      checks: [{ check_id: "c1", passed: false, severity: "warning", evidence: null }],
       enforcement: { action: "halted", reason: "blocked" },
     });
-    // computed status is WARN from the failing WARN-severity check;
+    // computed status is WARN from the failing warning-severity check;
     // override only fires when computed status is PASS — so status stays WARN
     expect(receipt.status).toBe("WARN");
   });
@@ -466,7 +466,7 @@ describe("v1.3 enforcement override (SAN-213 AC 8)", () => {
       correlation_id: "test",
       inputs: {},
       outputs: {},
-      checks: [{ check_id: "c1", passed: false, severity: "critical", message: "error", evidence: null }],
+      checks: [{ check_id: "c1", passed: false, severity: "critical", evidence: null }],
       enforcement: { action: "halted", reason: "blocked" },
     });
     expect(receipt.status).toBe("FAIL");
@@ -486,7 +486,7 @@ describe("v1.3 enforcement override (SAN-213 AC 8)", () => {
     // Structural guarantee: enforcement.action="halted" + status="PASS" is impossible
     const inputs = [
       { checks: [], enforcement: { action: "halted" } },
-      { checks: [{ check_id: "c1", passed: true, severity: "critical", message: "", evidence: null }], enforcement: { action: "halted" } },
+      { checks: [{ check_id: "c1", passed: true, severity: "critical", evidence: null }], enforcement: { action: "halted" } },
     ];
     for (const params of inputs) {
       const receipt = await generateReceipt({
