@@ -757,6 +757,13 @@ export class SannaGateway {
   ): Record<string, unknown> {
     const correlationId = `gw-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
+    const ENFORCEMENT_ACTION_MAP: Record<string, string> = {
+      halt: "halted",
+      escalate: "escalated",
+      allow: "allowed",
+    };
+    const normalizedAction = ENFORCEMENT_ACTION_MAP[decision.decision] ?? decision.decision;
+
     const receipt = generateReceipt({
       correlation_id: correlationId,
       inputs: { tool: toolName, args },
@@ -765,7 +772,7 @@ export class SannaGateway {
       enforcement: wasAllowed
         ? undefined
         : {
-            action: decision.decision,
+            action: normalizedAction,
             reason: decision.reason,
             failed_checks: checks
               .filter((c) => !c.passed)
@@ -777,6 +784,8 @@ export class SannaGateway {
       workflow_id: this._workflowId,
       content_mode: this._contentMode,
       content_mode_source: this._contentMode ? "local_config" : null,
+      enforcementSurface: "gateway",
+      invariantsScope: "full",
     });
 
     // Add triad
