@@ -781,11 +781,11 @@ describe("Cross-surface — API receipt integrity", () => {
     const receipt = sink.receipts[0];
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
-    expect(receipt.checks_version).toBe("7");
+    expect(receipt.checks_version).toBe("8");
 
     const fpInput = computeFingerprintInput(receipt as unknown as Record<string, unknown>);
     const parts = fpInput.split("|");
-    expect(parts.length).toBe(14);
+    expect(parts.length).toBe(16);
 
     const { receipt_fingerprint, full_fingerprint } = computeFingerprints(
       receipt as unknown as Record<string, unknown>,
