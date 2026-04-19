@@ -16,6 +16,7 @@ import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./type
 
 export const SPEC_VERSION = "1.3";
 export const CHECKS_VERSION = "8"; // SAN-213 v1.3: 16-field fingerprint (positions 15-16 are enforcement_surface_hash and invariants_scope_hash)
+export const TOOL_VERSION = "sanna-ts/1.3.0";
 
 // ── Fingerprint computation ──────────────────────────────────────────
 
@@ -331,9 +332,28 @@ export function generateReceipt(params: ReceiptParams): Receipt {
     else status = "PASS";
   }
 
+  // SAN-213 v1.3: 4-action enforcement override (mirrors Python receipt.py:678-692).
+  // Receipt status cannot contradict enforcement.action: a receipt with action="halted"
+  // but status="PASS" would misrepresent reality. Override only fires when computed
+  // status is PASS — receipts whose checks already produced WARN/FAIL are left alone
+  // (verifier in 3C provides the cross-field consistency check).
+  if (params.enforcement) {
+    const enforcementAction = (params.enforcement as Record<string, unknown>).action as string | undefined;
+    if (status === "PASS") {
+      if (enforcementAction === "halted") {
+        status = "FAIL";
+      } else if (enforcementAction === "warned") {
+        status = "WARN";
+      } else if (enforcementAction === "escalated") {
+        status = "WARN";
+      }
+      // "allowed" → PASS, no change needed
+    }
+  }
+
   const receiptBase: Record<string, unknown> = {
     spec_version: SPEC_VERSION,
-    tool_version: params.tool_version ?? "sanna-ts/1.3.0",
+    tool_version: params.tool_version ?? TOOL_VERSION,
     checks_version: CHECKS_VERSION,
     receipt_id: randomUUID(),
     correlation_id: params.correlation_id,
