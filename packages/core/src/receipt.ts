@@ -14,8 +14,8 @@ import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./type
 
 // ── Constants ────────────────────────────────────────────────────────
 
-export const SPEC_VERSION = "1.1";
-export const CHECKS_VERSION = "7"; // SAN-27/SAN-48: match Python empty-checks normalization
+export const SPEC_VERSION = "1.3";
+export const CHECKS_VERSION = "8"; // SAN-213 v1.3: 16-field fingerprint (positions 15-16 are enforcement_surface_hash and invariants_scope_hash)
 
 // ── Fingerprint computation ──────────────────────────────────────────
 
@@ -134,7 +134,42 @@ export function computeFingerprintInput(receipt: Record<string, unknown>): strin
     ].join("|");
   }
 
-  // 14-field fingerprint for checks_version >= 6
+  // 14-field fingerprint for 6 <= checks_version < 8
+  if (!isNaN(cvInt) && cvInt < 8) {
+    return [
+      correlationId,
+      contextHash,
+      outputHash,
+      checksVersion,
+      checksHash,
+      constitutionHash,
+      enforcementHash,
+      coverageHash,
+      authorityHash,
+      escalationHash,
+      trustHash,
+      extensionsHash,
+      parentReceiptsHash,
+      workflowIdHash,
+    ].join("|");
+  }
+
+  // 16-field fingerprint for checks_version >= 8 (v1.3, SAN-213)
+  // Fields 15-16: enforcement_surface and invariants_scope participate in the
+  // fingerprint as hash_text(value). When the receipt is missing these fields
+  // (cv >= 8 but field absent), fall back to "" so computeFingerprintInput
+  // never throws. The verifier's checkSchema catches the missing-field defect
+  // separately; this fallback ensures verifyReceipt can collect ALL independent
+  // errors instead of short-circuiting on a throw. The resulting fingerprint
+  // mismatch (hash("") != hash(expected)) loudly surfaces the problem at the
+  // fingerprint check too.
+  const enforcementSurfaceRaw =
+      (receipt.enforcement_surface as string) ?? "";
+  const invariantsScopeRaw =
+      (receipt.invariants_scope as string) ?? "";
+  const enforcementSurfaceHash = hashContent(enforcementSurfaceRaw, 64);
+  const invariantsScopeHash    = hashContent(invariantsScopeRaw, 64);
+
   return [
     correlationId,
     contextHash,
@@ -150,6 +185,8 @@ export function computeFingerprintInput(receipt: Record<string, unknown>): strin
     extensionsHash,
     parentReceiptsHash,
     workflowIdHash,
+    enforcementSurfaceHash,
+    invariantsScopeHash,
   ].join("|");
 }
 
@@ -249,6 +286,8 @@ export interface ReceiptParams {
   extensions?: Record<string, unknown>;
   parent_receipts?: string[] | null;
   workflow_id?: string | null;
+  enforcementSurface?: string;
+  invariantsScope?: string;
   content_mode?: ContentMode;
   content_mode_source?: string | null;
   event_type?: string | null;
@@ -294,7 +333,7 @@ export function generateReceipt(params: ReceiptParams): Receipt {
 
   const receiptBase: Record<string, unknown> = {
     spec_version: SPEC_VERSION,
-    tool_version: params.tool_version ?? "sanna-ts/1.1.0",
+    tool_version: params.tool_version ?? "sanna-ts/1.3.0",
     checks_version: CHECKS_VERSION,
     receipt_id: randomUUID(),
     correlation_id: params.correlation_id,
@@ -321,6 +360,11 @@ export function generateReceipt(params: ReceiptParams): Receipt {
   if (params.escalation_events) receiptBase.escalation_events = params.escalation_events;
   if (params.source_trust_evaluations) receiptBase.source_trust_evaluations = params.source_trust_evaluations;
   if (params.extensions) receiptBase.extensions = params.extensions;
+
+  // v1.3 required top-level fields (participate in fingerprint at
+  // positions 15-16). Defaults match Python receipt.py:589-590.
+  receiptBase.enforcement_surface = params.enforcementSurface ?? "middleware";
+  receiptBase.invariants_scope    = params.invariantsScope    ?? "full";
 
   // Metadata fields (do NOT participate in fingerprint)
   if (params.content_mode != null) receiptBase.content_mode = params.content_mode;

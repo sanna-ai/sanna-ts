@@ -11,7 +11,7 @@ import {
 } from "../src/receipt.js";
 import { loadPrivateKey, loadPublicKey } from "../src/crypto.js";
 import { verify } from "../src/crypto.js";
-import { canonicalize } from "../src/hashing.js";
+import { canonicalize, hashContent } from "../src/hashing.js";
 
 const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
 const golden = JSON.parse(readFileSync(resolve(FIXTURES, "golden-hashes.json"), "utf-8"));
@@ -288,5 +288,117 @@ describe("correlation_id pipe validation", () => {
         checks: [{ check_id: "C1", passed: true, severity: "info", evidence: null }],
       }),
     ).not.toThrow();
+  });
+});
+
+describe("v1.3 16-field fingerprint (SAN-213)", () => {
+  const EXPECTED_MIDDLEWARE_HASH = "fd7f274babdbe7e35bccaf7ab6d2389fbcaaf6798b357f3b2b83ccc992b40860";
+  const EXPECTED_FULL_HASH = "a18b869b2e81c0c529552a3c4fa5c92ed08b98a4e146aed778d71d27517f83ac";
+  const EMPTY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+  it("applies defaults when params omitted", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    expect(receipt.enforcement_surface).toBe("middleware");
+    expect(receipt.invariants_scope).toBe("full");
+  });
+
+  it("explicit values flow through", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      enforcementSurface: "gateway",
+      invariantsScope: "authority_only",
+    });
+    expect(receipt.enforcement_surface).toBe("gateway");
+    expect(receipt.invariants_scope).toBe("authority_only");
+  });
+
+  it("16-field structure when cv=8", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    // Force cv=8 on the receipt for testing computeFingerprintInput directly
+    const modified = { ...receipt, checks_version: "8" };
+    const fpInput = computeFingerprintInput(modified);
+    const parts = fpInput.split("|");
+    expect(parts.length).toBe(16);
+  });
+
+  it("backward compat structure for older cv values", async () => {
+    const base = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    const receipt7 = { ...base, checks_version: "7" };
+    const receipt5 = { ...base, checks_version: "5" };
+    expect(computeFingerprintInput(receipt7).split("|").length).toBe(14);
+    expect(computeFingerprintInput(receipt5).split("|").length).toBe(12);
+  });
+
+  it("field 15 byte-parity with Python (CRITICAL)", () => {
+    // sha256("middleware") confirmed via: printf '%s' 'middleware' | shasum -a 256
+    // Must match Python hash_text("middleware") from receipt.py
+    const hash = hashContent("middleware", 64);
+    expect(hash).toBe(EXPECTED_MIDDLEWARE_HASH);
+  });
+
+  it("field 16 byte-parity with Python (CRITICAL)", () => {
+    // sha256("full") confirmed via: printf '%s' 'full' | shasum -a 256
+    // Must match Python hash_text("full") from receipt.py
+    const hash = hashContent("full", 64);
+    expect(hash).toBe(EXPECTED_FULL_HASH);
+  });
+
+  it("both fields ACTUALLY participate in the fingerprint (no-op guard)", async () => {
+    const r1 = await generateReceipt({ correlation_id: "test", inputs: {}, outputs: {}, checks: [], enforcementSurface: "middleware" });
+    const r2 = await generateReceipt({ correlation_id: "test", inputs: {}, outputs: {}, checks: [], enforcementSurface: "gateway" });
+    expect(r1.full_fingerprint).not.toBe(r2.full_fingerprint);
+
+    const r3 = await generateReceipt({ correlation_id: "test", inputs: {}, outputs: {}, checks: [], invariantsScope: "full" });
+    const r4 = await generateReceipt({ correlation_id: "test", inputs: {}, outputs: {}, checks: [], invariantsScope: "authority_only" });
+    expect(r3.full_fingerprint).not.toBe(r4.full_fingerprint);
+  });
+
+  it("position correctness: fields 15-16 at correct positions", async () => {
+    const receipt = await generateReceipt({
+      correlation_id: "test",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+    });
+    const parts = computeFingerprintInput(receipt).split("|");
+    expect(parts[14]).toBe(EXPECTED_MIDDLEWARE_HASH); // 0-indexed field 15
+    expect(parts[15]).toBe(EXPECTED_FULL_HASH);       // 0-indexed field 16
+  });
+
+  it("missing fields fall back to empty string (defensive verifier path)", async () => {
+    // Hand-built receipt missing enforcement_surface and invariants_scope
+    // computeFingerprintInput must NOT throw; fields 15-16 use hash("")
+    const base = await generateReceipt({ correlation_id: "test", inputs: {}, outputs: {}, checks: [] });
+    const incomplete = { ...base, checks_version: "8" } as any;
+    delete incomplete.enforcement_surface;
+    delete incomplete.invariants_scope;
+    // Must not throw
+    let fpInput: string;
+    expect(() => { fpInput = computeFingerprintInput(incomplete); }).not.toThrow();
+    const parts = computeFingerprintInput(incomplete).split("|");
+    // Fields 15 and 16 should be hash("") = EMPTY_HASH
+    // Note: EMPTY_HASH here is sha256("") which is the hash of empty string
+    expect(parts[14]).toBe(EMPTY_HASH);
+    expect(parts[15]).toBe(EMPTY_HASH);
   });
 });

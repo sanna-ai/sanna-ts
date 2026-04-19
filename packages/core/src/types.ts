@@ -242,6 +242,13 @@ export interface Receipt {
   checks_passed: number;
   checks_failed: number;
   status: string;
+  /** Enforcement surface emitting this receipt. Required for v1.3+
+   *  (CHECKS_VERSION >= 8). One of: "middleware", "gateway",
+   *  "cli_interceptor", "http_interceptor". */
+  enforcement_surface: string;
+  /** Scope of invariants evaluated. Required for v1.3+. One of:
+   *  "full", "authority_only", "limited", "none". */
+  invariants_scope: string;
   parent_receipts?: string[] | null;
   workflow_id?: string | null;
   content_mode?: ContentMode;

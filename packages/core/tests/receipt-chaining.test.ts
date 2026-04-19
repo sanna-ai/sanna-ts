@@ -176,22 +176,22 @@ describe("parent_receipts order matters for fingerprint", () => {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-describe("SPEC_VERSION is 1.1", () => {
-  it("equals '1.1'", () => {
-    expect(SPEC_VERSION).toBe("1.1");
+describe("SPEC_VERSION is 1.3", () => {
+  it("equals '1.3'", () => {
+    expect(SPEC_VERSION).toBe("1.3");
   });
 });
 
-describe("CHECKS_VERSION is 7", () => {
-  it("equals '7'", () => {
-    expect(CHECKS_VERSION).toBe("7");
+describe("CHECKS_VERSION is 8", () => {
+  it("equals '8'", () => {
+    expect(CHECKS_VERSION).toBe("8");
   });
 });
 
-describe("tool_version defaults to sanna-ts/1.1.0", () => {
+describe("tool_version defaults to sanna-ts/1.3.0", () => {
   it("uses default tool_version when none provided", () => {
     const receipt = generateReceipt({ ...baseParams() });
-    expect(receipt.tool_version).toBe("sanna-ts/1.1.0");
+    expect(receipt.tool_version).toBe("sanna-ts/1.3.0");
   });
 });
 
