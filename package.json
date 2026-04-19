@@ -12,6 +12,9 @@
     "test": "vitest run",
     "lint": "eslint 'packages/*/src/**/*.ts'"
   },
+  "overrides": {
+    "commander": "^13.1.0"
+  },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",
