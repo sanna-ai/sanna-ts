@@ -351,6 +351,8 @@ function generateGovernanceReceipt(params: GovernanceReceiptParams): Receipt {
     authority_decisions: params.authorityDecisions,
     parent_receipts: params.parentReceipts,
     workflow_id: params.workflowId,
+    enforcementSurface: "middleware",
+    invariantsScope: "full",
   });
 
   // Sign receipt if key is available
