@@ -21,7 +21,7 @@ import yaml from "js-yaml";
 import { loadConstitution, verifyConstitutionSignature } from "./constitution.js";
 import { loadPublicKey, getKeyId, exportPublicKeyPem } from "./crypto.js";
 import { verifyReceipt } from "./verifier.js";
-import { computeFingerprints } from "./receipt.js";
+import { computeFingerprints, TOOL_VERSION } from "./receipt.js";
 import type {
   BundleCheck,
   BundleVerificationResult,
@@ -90,7 +90,7 @@ export function createBundle(opts: CreateBundleOptions): string {
   const metadata: Record<string, unknown> = {
     bundle_format_version: BUNDLE_FORMAT_VERSION,
     created_at: new Date().toISOString(),
-    tool_version: "sanna-ts/1.1.0",
+    tool_version: TOOL_VERSION,
     description: description ?? "",
   };
 
