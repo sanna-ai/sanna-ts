@@ -109,3 +109,222 @@ describe("verifyReceipt — schema errors", () => {
     expect(result.errors.some((e) => e.includes("Missing required field"))).toBe(true);
   });
 });
+
+// ── v1.3 verifier (SAN-213 AC 8 + 13) ───────────────────────────────
+
+describe("v1.3 verifier (SAN-213 AC 8 + 13)", () => {
+  // Helper: generate a fully valid v1.3 receipt (cv="8"), optionally overriding fields.
+  // Produces a receipt that passes all checks unless specific fields are tampered.
+  function makeV13Receipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    const r = generateReceipt({
+      correlation_id: "v13-verifier-test",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      ...overrides,
+    }) as unknown as Record<string, unknown>;
+    return r;
+  }
+
+  // Helper: generate a v1.3 receipt with enforcement.action set, status="PASS".
+  // The receipt is generated fresh then its status field is overwritten to "PASS"
+  // so we can test the verifier's override independent of emit-side behavior.
+  // We also recompute fingerprints BEFORE status manipulation so fingerprints match
+  // the "honest" field values — this isolates the status-mismatch error.
+  function makeV13ReceiptWithAction(action: string): Record<string, unknown> {
+    const r = generateReceipt({
+      correlation_id: "v13-soc-test",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      enforcement: { action },
+    }) as unknown as Record<string, unknown>;
+    // Force status to "PASS" regardless of what generateReceipt computed (emit-side override).
+    // This tests the verifier's own override: verifier must re-derive the correct status
+    // and detect the mismatch.
+    r.status = "PASS";
+    return r;
+  }
+
+  // ── v1.3 schema required-field tests ─────────────────────────────
+
+  it("v13-sch-1: cv=8 receipt missing enforcement_surface fails with exact error string", () => {
+    const r = makeV13Receipt();
+    delete r.enforcement_surface;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+    );
+  });
+
+  it("v13-sch-2: cv=8 receipt missing invariants_scope fails with exact error string", () => {
+    const r = makeV13Receipt();
+    delete r.invariants_scope;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: invariants_scope",
+    );
+  });
+
+  it("v13-sch-3: cv=8 receipt missing both fields produces both errors (collect-all)", () => {
+    const r = makeV13Receipt();
+    delete r.enforcement_surface;
+    delete r.invariants_scope;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+    );
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: invariants_scope",
+    );
+  });
+
+  it("v13-sch-4: cv=7 receipt missing enforcement_surface passes the v1.3 check (backward compat)", () => {
+    // Build a cv=7 receipt by calling generateReceipt with overridden checks_version.
+    // Since generateReceipt always sets cv="8", we construct a minimal cv=7 receipt manually.
+    const r = generateReceipt({
+      correlation_id: "v13-sch-4-cv7",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    // Override to cv=7 and recompute fingerprints to keep them consistent.
+    // We also need enforcement_surface + invariants_scope to stay for fingerprint parity,
+    // so we change checks_version and remove the v1.3 fields AFTER fingerprint recompute
+    // to test the schema check path only. The fingerprint will mismatch, but the schema
+    // check for cv<8 should not fire — we assert the specific v1.3 error is absent.
+    r.checks_version = "7";
+    delete r.enforcement_surface;
+    const result = verifyReceipt(r);
+    // The v1.3 required-field error must NOT appear (cv < 8 → check skipped)
+    expect(result.errors).not.toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+    );
+    expect(result.errors).not.toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: invariants_scope",
+    );
+  });
+
+  it("v13-sch-5: cv=8 receipt with both fields populated passes the v1.3 required-field check", () => {
+    const r = makeV13Receipt();
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).not.toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+    );
+    expect(result.errors).not.toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: invariants_scope",
+    );
+  });
+
+  // ── v1.3 status-override-consistency tests (verifier-side, not emit) ─
+
+  it("v13-soc-halted: status=PASS + action=halted fails with status mismatch FAIL", () => {
+    const r = makeV13ReceiptWithAction("halted");
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Status mismatch: computed 'FAIL', expected 'PASS'");
+  });
+
+  it("v13-soc-warned: status=PASS + action=warned fails with status mismatch WARN", () => {
+    const r = makeV13ReceiptWithAction("warned");
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Status mismatch: computed 'WARN', expected 'PASS'");
+  });
+
+  it("v13-soc-escalated: status=PASS + action=escalated fails with status mismatch WARN", () => {
+    const r = makeV13ReceiptWithAction("escalated");
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Status mismatch: computed 'WARN', expected 'PASS'");
+  });
+
+  it("v13-soc-allowed: status=PASS + action=allowed passes verification", () => {
+    // generateReceipt with action=allowed produces status=PASS (no override fires)
+    const r = generateReceipt({
+      correlation_id: "v13-soc-allowed",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      enforcement: { action: "allowed" },
+    }) as unknown as Record<string, unknown>;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("v13-soc-no-override-on-warn: action=halted with WARN severity checks leaves WARN alone", () => {
+    // When checks already produce WARN (warn-severity failure), the override only fires
+    // when computed == PASS. Since computed is already WARN, override does not fire.
+    // The stored status must also be WARN (emit-side produces WARN from the failing check,
+    // then override only fires for PASS → this is the no-override-on-warn path).
+    const r = generateReceipt({
+      correlation_id: "v13-soc-no-override",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        // warning-severity failing check → computed WARN before override
+        { check_id: "C1", passed: false, severity: "warning", evidence: "warn" },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      enforcement: { action: "halted" },
+    }) as unknown as Record<string, unknown>;
+    // status was set to WARN by emit-side (check failed with warning severity).
+    // Verifier: computes WARN from checks, override only fires if computed==PASS → skipped.
+    // WARN == stored WARN → no mismatch error.
+    const result = verifyReceipt(r);
+    // No status mismatch error expected
+    expect(result.errors.some((e) => e.includes("Status mismatch"))).toBe(false);
+  });
+
+  it("v13-soc-no-enforcement: no enforcement field → override skipped, status from severity", () => {
+    const r = generateReceipt({
+      correlation_id: "v13-soc-no-enf",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      // No enforcement field
+    }) as unknown as Record<string, unknown>;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  // ── AC 8 verifier-side integrity guarantee ─────────────────────────
+
+  it("v13-integrity: verifier structurally rejects PASS+halted/warned/escalated receipts", () => {
+    const violatingActions = ["halted", "warned", "escalated"] as const;
+    for (const action of violatingActions) {
+      const r = makeV13ReceiptWithAction(action);
+      const result = verifyReceipt(r);
+      expect(result.valid, `Expected invalid for action=${action}`).toBe(false);
+      const hasStatusMismatch = result.errors.some(
+        (e) => e.includes("Status mismatch") && e.includes("FAIL") || e.includes("WARN"),
+      );
+      expect(hasStatusMismatch, `Expected status-mismatch error for action=${action}`).toBe(true);
+    }
+  });
+});

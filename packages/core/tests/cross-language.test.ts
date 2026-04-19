@@ -7,18 +7,19 @@
  * verified by the TypeScript SDK — the core promise of cross-language
  * receipt portability.
  *
- * All fixtures use the v1.2 14-field fingerprint formula:
+ * v1.3 fixtures use the 16-field fingerprint formula (checks_version "8"):
  *   correlation_id | context_hash | output_hash | checks_version |
  *   checks_hash | constitution_hash | enforcement_hash | coverage_hash |
  *   authority_hash | escalation_hash | trust_hash | extensions_hash |
- *   parent_receipts_hash | workflow_id_hash
+ *   parent_receipts_hash | workflow_id_hash |
+ *   enforcement_surface_hash | invariants_scope_hash
  */
 
 import { describe, it, expect } from "vitest";
 import { resolve } from "node:path";
 import { readFileSync, readdirSync } from "node:fs";
 import { verifyReceipt } from "../src/verifier.js";
-import { computeFingerprints } from "../src/receipt.js";
+import { computeFingerprints, generateReceipt } from "../src/receipt.js";
 import { loadPublicKey } from "../src/crypto.js";
 import { hashObj } from "../src/hashing.js";
 
@@ -232,4 +233,101 @@ describe("CRITICAL: golden hash cross-verification", () => {
       });
     });
   }
+});
+
+// ── v1.3 cross-language parity (SAN-213 AC 13) ──────────────────────
+
+describe("v1.3 cross-language parity (SAN-213 AC 13)", () => {
+  // Locate v1.3 fixtures: all fixtures in receipts/ with checks_version >= "8"
+  const v13Fixtures = receiptFiles.filter((f) => {
+    const r = receipts[f.replace(".json", "")];
+    if (!r) return false;
+    const cv = parseInt(String(r.checks_version ?? "0"), 10);
+    return !isNaN(cv) && cv >= 8;
+  });
+
+  if (v13Fixtures.length === 0) {
+    it.skip("No v1.3 fixtures found (checks_version >= 8) — submodule may not have shipped them yet", () => {});
+  } else {
+    // (a) For each v1.3 fixture, run the TS verifier and assert clean result.
+    for (const file of v13Fixtures) {
+      const name = file.replace(".json", "");
+      const receipt = receipts[name];
+
+      describe(`v1.3 fixture: ${name}`, () => {
+        it("passes full verification with TypeScript verifier", () => {
+          const result = verifyReceipt(receipt, pubKey);
+          if (!result.valid) {
+            console.error(`V1.3 VERIFICATION FAILED for ${name}:`, result.errors);
+          }
+          expect(result.valid).toBe(true);
+          expect(result.errors).toEqual([]);
+        });
+
+        it("checks_performed includes all required check types", () => {
+          const result = verifyReceipt(receipt, pubKey);
+          expect(result.checks_performed).toContain("schema");
+          expect(result.checks_performed).toContain("fingerprint");
+          expect(result.checks_performed).toContain("content_hashes");
+          expect(result.checks_performed).toContain("status_consistency");
+          expect(result.checks_performed).toContain("timestamp");
+        });
+
+        it("has enforcement_surface and invariants_scope (v1.3 required fields)", () => {
+          expect(receipt.enforcement_surface).toBeTruthy();
+          expect(receipt.invariants_scope).toBeTruthy();
+        });
+      });
+    }
+  }
+
+  // (c) Round-trip test: generate a v1.3 receipt via TS, verify it.
+  it("v1.3 round-trip: TS-generated receipt verifies clean", () => {
+    const r = generateReceipt({
+      correlation_id: "cross-lang-3c",
+      inputs: {},
+      outputs: {},
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+    }) as unknown as Record<string, unknown>;
+
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  // (d) Negative test: mutate enforcement_surface, expect the exact error string.
+  it("v1.3 negative: receipt with empty enforcement_surface produces exact error string", () => {
+    if (v13Fixtures.length === 0) {
+      // Fall back to generating one
+      const r = generateReceipt({
+        correlation_id: "cross-lang-3c-neg",
+        inputs: {},
+        outputs: {},
+        checks: [
+          { check_id: "C1", passed: true, severity: "info", evidence: null },
+        ],
+        enforcementSurface: "middleware",
+        invariantsScope: "full",
+      }) as unknown as Record<string, unknown>;
+      r.enforcement_surface = "";
+      const result = verifyReceipt(r);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain(
+        "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+      );
+    } else {
+      // Use the first v1.3 fixture, set enforcement_surface to empty string
+      const name = v13Fixtures[0].replace(".json", "");
+      const r = { ...receipts[name], enforcement_surface: "" };
+      const result = verifyReceipt(r);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain(
+        "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+      );
+    }
+  });
 });
