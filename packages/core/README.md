@@ -98,9 +98,10 @@ const result = verifyReceipt(receipt as unknown as Record<string, unknown>, auth
 - `generateReceipt(params)` — create a complete receipt with hashes and fingerprints
 - `signReceipt(receipt, privateKey, signedBy)` — Ed25519 sign a receipt
 - `computeFingerprints(receipt)` — compute 16-hex and 64-hex fingerprints
-- `computeFingerprintInput(receipt)` — compute the 14-field pipe-delimited input
-- `SPEC_VERSION` — protocol version (`"1.1"`)
-- `CHECKS_VERSION` — checks schema version (`"6"`)
+- `computeFingerprintInput(receipt)` — compute the 16-field pipe-delimited input (checks_version >= 8) or 14/12-field for older receipts
+- `SPEC_VERSION` — protocol version (`"1.3"`)
+- `CHECKS_VERSION` — checks schema version (`"8"`)
+- `TOOL_VERSION` — package version string (`"sanna-ts/1.3.0"`)
 
 ### Verifier
 
