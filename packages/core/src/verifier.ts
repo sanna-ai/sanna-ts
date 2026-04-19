@@ -53,6 +53,26 @@ function checkSchema(receipt: Record<string, unknown>): string[] {
     if (!(field in receipt)) errors.push(`Missing required field: ${field}`);
   }
 
+  // v1.3+ minimum-required-fields assertion (SAN-213).
+  // Mirror of Python verify.py:900-919. When checks_version >= 8,
+  // enforcement_surface and invariants_scope are required fields.
+  // Error message text must match Python byte-for-byte for cross-SDK
+  // debugging consistency.
+  const cvStr = String(receipt.checks_version ?? "");
+  const cvIntForV13Check = parseInt(cvStr, 10);
+  if (!isNaN(cvIntForV13Check) && cvIntForV13Check >= 8) {
+    if (!receipt.enforcement_surface) {
+      errors.push(
+        "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+      );
+    }
+    if (!receipt.invariants_scope) {
+      errors.push(
+        "v1.3+ receipt (checks_version >= 8) is missing required field: invariants_scope",
+      );
+    }
+  }
+
   // receipt_id: UUID v4
   const rid = String(receipt.receipt_id ?? "");
   if (rid && !UUID_V4_RE.test(rid)) {
@@ -204,6 +224,28 @@ function checkStatusConsistency(receipt: Record<string, unknown>): string[] {
   else if (warnFails > 0) computed = "WARN";
   else if (nonEvaluated.length > 0) computed = "PARTIAL";
   else computed = "PASS";
+
+  // SAN-213 v1.3 enforcement override (parity with generateReceipt and
+  // Python verify.py:479-491). Receipt status cannot contradict
+  // enforcement.action: a receipt with action="halted" but
+  // status="PASS" would misrepresent reality. Override only fires when
+  // computed status is PASS — receipts whose checks already produced
+  // WARN/FAIL/PARTIAL are left alone (matches Python's design choice;
+  // the receipt is rejected by the status mismatch error if there's
+  // an actual contradiction).
+  const enforcement = receipt.enforcement as Record<string, unknown> | undefined;
+  if (enforcement) {
+    const enforcementAction = enforcement.action as string | undefined;
+    if (computed === "PASS") {
+      if (enforcementAction === "halted") {
+        computed = "FAIL";
+      } else if (enforcementAction === "warned") {
+        computed = "WARN";
+      } else if (enforcementAction === "escalated") {
+        computed = "WARN";
+      }
+    }
+  }
 
   const expected = String(receipt.status ?? "");
   if (computed !== expected) {
