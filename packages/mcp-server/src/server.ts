@@ -45,6 +45,7 @@ import {
   isApprovalExpired,
   verifyIdentityClaim,
   SPEC_VERSION,
+  CHECKS_VERSION,
 } from "@sanna-ai/core";
 
 import type {
@@ -519,6 +520,8 @@ function handleGenerateReceipt(
     outputs: { response: response || null },
     checks,
     constitution_ref: constitutionRef,
+    enforcementSurface: "middleware",
+    invariantsScope: "full",
   });
 
   // Sign receipt if key is available
@@ -712,7 +715,6 @@ function handleVerifyConstitution(
 }
 
 function handleListChecks(): ToolResult {
-  const CHECKS_VERSION = "6";
   return jsonResult({
     checks_version: CHECKS_VERSION,
     spec_version: SPEC_VERSION,
