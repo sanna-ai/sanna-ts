@@ -4,3 +4,5 @@ dist/
 .DS_Store
 CLAUDE.md
 security-audit-sanna-ts-2026-03-26.md
+security-audit-*.md
+security-review-*.md
