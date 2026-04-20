@@ -236,21 +236,21 @@ describe("v1.3 verifier (SAN-213 AC 8 + 13)", () => {
     const r = makeV13ReceiptWithAction("halted");
     const result = verifyReceipt(r);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Status mismatch: computed 'FAIL', expected 'PASS'");
+    expect(result.errors.some((e) => e.includes("Status mismatch") && e.includes("halted") && e.includes("FAIL"))).toBe(true);
   });
 
   it("v13-soc-warned: status=PASS + action=warned fails with status mismatch WARN", () => {
     const r = makeV13ReceiptWithAction("warned");
     const result = verifyReceipt(r);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Status mismatch: computed 'WARN', expected 'PASS'");
+    expect(result.errors.some((e) => e.includes("Status mismatch") && e.includes("warned") && e.includes("WARN"))).toBe(true);
   });
 
   it("v13-soc-escalated: status=PASS + action=escalated fails with status mismatch WARN", () => {
     const r = makeV13ReceiptWithAction("escalated");
     const result = verifyReceipt(r);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Status mismatch: computed 'WARN', expected 'PASS'");
+    expect(result.errors.some((e) => e.includes("Status mismatch") && e.includes("escalated") && e.includes("WARN"))).toBe(true);
   });
 
   it("v13-soc-allowed: status=PASS + action=allowed passes verification", () => {
@@ -326,5 +326,216 @@ describe("v1.3 verifier (SAN-213 AC 8 + 13)", () => {
       );
       expect(hasStatusMismatch, `Expected status-mismatch error for action=${action}`).toBe(true);
     }
+  });
+});
+
+// ── v1.3 SAN-214 error text and legacy warnings ──────────────────────
+
+describe("v1.3 SAN-214 error text and legacy warnings", () => {
+  // Helper: build a v1.3 receipt with a given enforcement.action, then force status=PASS.
+  // Reuses the same approach as makeV13ReceiptWithAction in the SAN-213 suite.
+  function makeV13WithAction(action: string): Record<string, unknown> {
+    const r = generateReceipt({
+      correlation_id: "san214-err-test",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      enforcement: { action },
+    }) as unknown as Record<string, unknown>;
+    r.status = "PASS";
+    return r;
+  }
+
+  // Helper: build a legacy cv=6/7 receipt by overriding checks_version after generation.
+  // Fingerprint will mismatch (expected) — only legacy-warning behavior is under test.
+  function makeLegacyReceipt(cv: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    const r = generateReceipt({
+      correlation_id: "san214-legacy-test",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    r.checks_version = String(cv);
+    // Remove v1.3-specific fields to simulate a legacy receipt
+    delete r.enforcement_surface;
+    delete r.invariants_scope;
+    // Apply any test-specific overrides
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v === undefined) {
+        delete r[k];
+      } else {
+        r[k] = v;
+      }
+    }
+    return r;
+  }
+
+  // ── san214-err-1: cv=8, enforcement.action=halted, status=PASS ──────
+
+  it("san214-err-1: cv=8 + action=halted + status=PASS produces v1.3 spec §10 error text", () => {
+    const r = makeV13WithAction("halted");
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    const errMatch = result.errors.find((e) => e.includes("Status mismatch"));
+    expect(errMatch).toBeDefined();
+    expect(errMatch).toContain("cryptographically valid but semantically defective");
+    expect(errMatch).toContain("v1.3 spec §10");
+    expect(errMatch).toContain("enforcement.action='halted'");
+  });
+
+  // ── san214-err-2: cv=8, enforcement.action=warned, status=PASS ──────
+
+  it("san214-err-2: cv=8 + action=warned + status=PASS produces v1.3 spec §10 error text", () => {
+    const r = makeV13WithAction("warned");
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    const errMatch = result.errors.find((e) => e.includes("Status mismatch"));
+    expect(errMatch).toBeDefined();
+    expect(errMatch).toContain("cryptographically valid but semantically defective");
+    expect(errMatch).toContain("v1.3 spec §10");
+    expect(errMatch).toContain("enforcement.action='warned'");
+  });
+
+  // ── san214-err-3: cv=8, enforcement.action=escalated, status=PASS ───
+
+  it("san214-err-3: cv=8 + action=escalated + status=PASS produces v1.3 spec §10 error text", () => {
+    const r = makeV13WithAction("escalated");
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    const errMatch = result.errors.find((e) => e.includes("Status mismatch"));
+    expect(errMatch).toBeDefined();
+    expect(errMatch).toContain("cryptographically valid but semantically defective");
+    expect(errMatch).toContain("v1.3 spec §10");
+    expect(errMatch).toContain("enforcement.action='escalated'");
+  });
+
+  // ── san214-err-4: cv=8, enforcement.action=allowed, status=PASS — no mismatch ──
+
+  it("san214-err-4: cv=8 + action=allowed + status=PASS produces no status mismatch error", () => {
+    const r = generateReceipt({
+      correlation_id: "san214-err-4",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      enforcement: { action: "allowed" },
+    }) as unknown as Record<string, unknown>;
+    const result = verifyReceipt(r);
+    expect(result.errors.some((e) => e.includes("Status mismatch"))).toBe(false);
+  });
+
+  // ── san214-err-5: no enforcement field, computed FAIL, status=PASS ──
+  // Fallback path: no enforcement → no verbose error → plain text format.
+
+  it("san214-err-5: no enforcement + computed FAIL + status=PASS produces plain status mismatch text", () => {
+    const r = generateReceipt({
+      correlation_id: "san214-err-5",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        // critical-severity failing check → computed FAIL
+        { check_id: "C1", passed: false, severity: "critical", evidence: "failed" },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      // No enforcement field
+    }) as unknown as Record<string, unknown>;
+    // Force status to "PASS" to trigger the mismatch
+    r.status = "PASS";
+    const result = verifyReceipt(r);
+    const errMatch = result.errors.find((e) => e.startsWith("Status mismatch"));
+    expect(errMatch).toBeDefined();
+    // Fallback text: plain format, no v1.3 spec §10 language
+    expect(errMatch).toContain("Status mismatch: computed FAIL, expected PASS");
+    expect(errMatch).not.toContain("cryptographically valid");
+    expect(errMatch).not.toContain("v1.3 spec §10");
+  });
+
+  // ── san214-warn-1: cv=6, no enforcement_surface → legacy warning ────
+
+  it("san214-warn-1: cv=6 missing enforcement_surface produces legacy warning with Re-generate text", () => {
+    const r = makeLegacyReceipt(6);
+    const result = verifyReceipt(r);
+    const warnMatch = result.warnings.find((w) =>
+      w.includes("Pre-v1.3 receipt (checks_version=6)") &&
+      w.includes("'enforcement_surface' field not present"),
+    );
+    expect(warnMatch).toBeDefined();
+    expect(warnMatch).toContain("Re-generate with SDK >=1.3");
+  });
+
+  // ── san214-warn-2: cv=7, no invariants_scope → legacy warning (no Re-generate) ──
+
+  it("san214-warn-2: cv=7 missing invariants_scope produces legacy warning WITHOUT Re-generate text", () => {
+    // Build cv=7 receipt with enforcement_surface present, invariants_scope absent
+    const r = generateReceipt({
+      correlation_id: "san214-warn-2",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    r.checks_version = "7";
+    r.enforcement_surface = "middleware"; // present
+    delete r.invariants_scope; // absent
+    const result = verifyReceipt(r);
+    const warnMatch = result.warnings.find((w) =>
+      w.includes("Pre-v1.3 receipt (checks_version=7)") &&
+      w.includes("'invariants_scope' field not present"),
+    );
+    expect(warnMatch).toBeDefined();
+    // invariants_scope warning does NOT have the Re-generate sentence
+    expect(warnMatch).not.toContain("Re-generate with SDK >=1.3");
+  });
+
+  // ── san214-warn-3: cv=8, no enforcement_surface → hard error (not warning) ──
+
+  it("san214-warn-3: cv=8 missing enforcement_surface produces hard error, not legacy warning", () => {
+    const r = generateReceipt({
+      correlation_id: "san214-warn-3",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+    }) as unknown as Record<string, unknown>;
+    delete r.enforcement_surface;
+    const result = verifyReceipt(r);
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+    );
+    // Should NOT be a warning
+    expect(result.warnings.some((w) => w.includes("enforcement_surface"))).toBe(false);
+  });
+
+  // ── san214-warn-4: cv=7 WITH both fields present → no legacy warnings ──
+
+  it("san214-warn-4: cv=7 with enforcement_surface and invariants_scope present produces no legacy field warnings", () => {
+    const r = generateReceipt({
+      correlation_id: "san214-warn-4",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    r.checks_version = "7";
+    r.enforcement_surface = "middleware"; // present
+    r.invariants_scope = "full"; // present
+    const result = verifyReceipt(r);
+    expect(result.warnings.some((w) => w.includes("'enforcement_surface' field not present"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("'invariants_scope' field not present"))).toBe(false);
   });
 });

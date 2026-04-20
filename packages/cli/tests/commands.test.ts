@@ -944,3 +944,122 @@ describe("CLI Commands (unit tests via imports)", () => {
     });
   });
 });
+
+// ── SAN-214: LEGACY RECEIPT NOTE walkthrough CLI tests ───────────────
+
+describe("SAN-214 CLI walkthrough (LEGACY RECEIPT NOTE)", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "sanna-san214-cli-"));
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* */ }
+  });
+
+  // Helper: write a receipt to a temp file and return its path.
+  function writeReceipt(receipt: Record<string, unknown>): string {
+    const p = join(tmpDir, `receipt-${Date.now()}.json`);
+    writeFileSync(p, JSON.stringify(receipt, null, 2));
+    return p;
+  }
+
+  // Helper: run runVerify and capture stdout.
+  async function captureVerify(receiptPath: string): Promise<string> {
+    const { runVerify } = await import("../src/commands/verify.js");
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+    try {
+      process.exitCode = 0;
+      await runVerify(receiptPath, {});
+    } finally {
+      console.log = origLog;
+    }
+    process.exitCode = 0;
+    return logs.join("\n");
+  }
+
+  // san214-cli-1: cv=7 receipt with status=PASS AND enforcement.action=halted.
+  // Walkthrough SHOULD appear.
+
+  it("san214-cli-1: cv=7 + action=halted + status=PASS shows LEGACY RECEIPT NOTE", async () => {
+    const r = generateReceipt({
+      correlation_id: "san214-cli-1",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    r.checks_version = "7";
+    r.status = "PASS";
+    r.enforcement = { action: "halted" };
+
+    const output = await captureVerify(writeReceipt(r));
+    expect(output).toContain("LEGACY RECEIPT NOTE");
+    expect(output).toContain("predates the Sprint 15 integrity fix");
+    expect(output).toContain("halted");
+  });
+
+  // san214-cli-2: cv=8 + action=halted + status=PASS → walkthrough should NOT appear.
+  // cv=8 is not < 8, so the walkthrough condition is false.
+
+  it("san214-cli-2: cv=8 + action=halted + status=PASS does NOT show LEGACY RECEIPT NOTE", async () => {
+    const r = generateReceipt({
+      correlation_id: "san214-cli-2",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      enforcement: { action: "halted" },
+    }) as unknown as Record<string, unknown>;
+    r.status = "PASS";
+
+    const output = await captureVerify(writeReceipt(r));
+    expect(output).not.toContain("LEGACY RECEIPT NOTE");
+  });
+
+  // san214-cli-3: cv=7 receipt WITHOUT enforcement field → no walkthrough.
+  // No enforcement.action → condition false.
+
+  it("san214-cli-3: cv=7 + no enforcement field does NOT show LEGACY RECEIPT NOTE", async () => {
+    const r = generateReceipt({
+      correlation_id: "san214-cli-3",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    r.checks_version = "7";
+    // No enforcement field — status=PASS from checks, no mismatch
+
+    const output = await captureVerify(writeReceipt(r));
+    expect(output).not.toContain("LEGACY RECEIPT NOTE");
+  });
+
+  // san214-cli-4: cv=7 receipt, enforcement.action=allowed, status=PASS — no mismatch.
+  // No status mismatch → no walkthrough.
+
+  it("san214-cli-4: cv=7 + action=allowed + status=PASS (no mismatch) does NOT show LEGACY RECEIPT NOTE", async () => {
+    const r = generateReceipt({
+      correlation_id: "san214-cli-4",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+    }) as unknown as Record<string, unknown>;
+    r.checks_version = "7";
+    r.enforcement = { action: "allowed" };
+    // status=PASS matches computed PASS for action=allowed — no mismatch
+
+    const output = await captureVerify(writeReceipt(r));
+    expect(output).not.toContain("LEGACY RECEIPT NOTE");
+  });
+});
