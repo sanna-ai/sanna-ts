@@ -249,7 +249,19 @@ function checkStatusConsistency(receipt: Record<string, unknown>): string[] {
 
   const expected = String(receipt.status ?? "");
   if (computed !== expected) {
-    errors.push(`Status mismatch: computed '${computed}', expected '${expected}'`);
+    const enforcementAction = enforcement?.action as string | undefined;
+    let msg: string;
+    if (enforcementAction) {
+      msg = (
+        `Status mismatch: receipt has enforcement.action='${enforcementAction}' ` +
+        `with status='${expected}' but v1.3 spec §10 requires status='${computed}'. ` +
+        `Receipt is cryptographically valid but semantically defective: ` +
+        `the audit trail misrepresents what governance actually did.`
+      );
+    } else {
+      msg = `Status mismatch: computed ${computed}, expected ${expected}`;
+    }
+    errors.push(msg);
   }
 
   // Check counts
@@ -321,6 +333,27 @@ export function verifyReceipt(
   checksPerformed.push("schema");
   const schemaErrors = checkSchema(receipt);
   allErrors.push(...schemaErrors);
+
+  // Legacy warning for pre-v1.3 receipts missing new fields. Mirrors Python verify.py:927-940.
+  const cvStr = String(receipt.checks_version ?? "");
+  const cvLegacy = parseInt(cvStr, 10);
+  if (!isNaN(cvLegacy) && (cvLegacy === 6 || cvLegacy === 7)) {
+    if (!receipt.enforcement_surface) {
+      warnings.push(
+        `Pre-v1.3 receipt (checks_version=${cvLegacy}): ` +
+        `'enforcement_surface' field not present. This field was added in ` +
+        `v1.3 (checks_version 8) and is not required at this protocol version. ` +
+        `Re-generate with SDK >=1.3 for v1.3 integrity claims.`
+      );
+    }
+    if (!receipt.invariants_scope) {
+      warnings.push(
+        `Pre-v1.3 receipt (checks_version=${cvLegacy}): ` +
+        `'invariants_scope' field not present. This field was added in ` +
+        `v1.3 (checks_version 8) and is not required at this protocol version.`
+      );
+    }
+  }
 
   // 2. Signature verification
   if (publicKey) {
