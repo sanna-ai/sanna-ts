@@ -191,6 +191,49 @@ function printSummary(receipt: Record<string, unknown>, result: VerifyResult): v
     console.log();
   }
 
+  // SAN-214 Change C: Legacy receipt walkthrough.
+  const cvStrForWalkthrough = String(receipt.checks_version ?? "");
+  const cvIntForWalkthrough = parseInt(cvStrForWalkthrough, 10);
+  const enforcementForWalkthrough = receipt.enforcement as
+    Record<string, unknown> | undefined;
+  const enforcementActionForWalkthrough = enforcementForWalkthrough?.action as
+    string | undefined;
+
+  const hasStatusMismatch = result.errors.some(
+    (e) => e.startsWith("Status mismatch"),
+  );
+
+  if (
+    hasStatusMismatch &&
+    enforcementActionForWalkthrough &&
+    !isNaN(cvIntForWalkthrough) &&
+    cvIntForWalkthrough < 8
+  ) {
+    const recordedStatus = String(receipt.status ?? "");
+    console.log("-".repeat(50));
+    console.log("LEGACY RECEIPT NOTE");
+    console.log("-".repeat(50));
+    console.log();
+    console.log(
+      "This receipt predates the Sprint 15 integrity fix " +
+      "(v1.3 / checks_version 8).",
+    );
+    console.log();
+    console.log(
+      `The contradiction — enforcement.action='${enforcementActionForWalkthrough}' ` +
+      `with status='${recordedStatus}' — indicates that the ` +
+      `interceptor surface reported halt or escalate but the receipt ` +
+      `claims full checks passed. This is the defect that SAN-213 ` +
+      `fixed at emission time and SAN-214 fixed at verification time.`,
+    );
+    console.log();
+    console.log(
+      "Re-generate this receipt with SDK >=1.3 to produce a v1.3 " +
+      "receipt with consistent status and enforcement.action.",
+    );
+    console.log();
+  }
+
   // Governance checks
   const checks = (receipt.checks ?? []) as Record<string, unknown>[];
   if (checks.length > 0) {
