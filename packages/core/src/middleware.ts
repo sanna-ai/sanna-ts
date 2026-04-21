@@ -197,6 +197,9 @@ function runGovernance(
   parentReceipts?: string[] | null,
   workflowId?: string | null,
   sink?: ReceiptSink,
+  agentModel?: string | null,
+  agentModelProvider?: string | null,
+  agentModelVersion?: string | null,
 ): SannaResult<unknown> {
   const outputStr = toStr(output);
   const correlationId = `sanna-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -233,6 +236,9 @@ function runGovernance(
         signingKey,
         parentReceipts,
         workflowId,
+        agentModel,
+        agentModelProvider,
+        agentModelVersion,
       });
 
       throw new SannaHaltError(
@@ -290,6 +296,9 @@ function runGovernance(
     signingKey,
     parentReceipts,
     workflowId,
+    agentModel,
+    agentModelProvider,
+    agentModelVersion,
   });
 
   // 6. Store receipt in sink (best-effort)
@@ -326,6 +335,9 @@ interface GovernanceReceiptParams {
   signingKey?: KeyObject;
   parentReceipts?: string[] | null;
   workflowId?: string | null;
+  agentModel?: string | null;
+  agentModelProvider?: string | null;
+  agentModelVersion?: string | null;
 }
 
 function generateGovernanceReceipt(params: GovernanceReceiptParams): Receipt {
@@ -353,6 +365,9 @@ function generateGovernanceReceipt(params: GovernanceReceiptParams): Receipt {
     workflow_id: params.workflowId,
     enforcementSurface: "middleware",
     invariantsScope: "full",
+    ...(params.agentModel !== undefined && { agent_model: params.agentModel }),
+    ...(params.agentModelProvider !== undefined && { agent_model_provider: params.agentModelProvider }),
+    ...(params.agentModelVersion !== undefined && { agent_model_version: params.agentModelVersion }),
   });
 
   // Sign receipt if key is available
@@ -425,6 +440,9 @@ export function sannaObserve<TArgs extends unknown[], TReturn>(
       options.parentReceipts,
       options.workflowId,
       options.sink,
+      options.agentModel,
+      options.agentModelProvider,
+      options.agentModelVersion,
     );
 
     return result as SannaResult<TReturn>;

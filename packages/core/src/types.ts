@@ -377,6 +377,9 @@ export interface SannaObserveOptions {
   parentReceipts?: string[] | null;
   workflowId?: string | null;
   sink?: ReceiptSink;
+  agentModel?: string | null;
+  agentModelProvider?: string | null;
+  agentModelVersion?: string | null;
 }
 
 // ── ReceiptSink types ─────────────────────────────────────────────
