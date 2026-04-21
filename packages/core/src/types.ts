@@ -224,6 +224,9 @@ export interface ConstitutionRef {
 /** Content handling mode for receipt data. */
 export type ContentMode = "full" | "redacted" | "hashes_only" | null;
 
+/** Canonical SDK identity values for the tool_name field. */
+export type ToolName = "sanna" | "sanna-ts";
+
 /** A full Sanna receipt (signed or unsigned). */
 export interface Receipt {
   spec_version: string;
@@ -249,6 +252,15 @@ export interface Receipt {
   /** Scope of invariants evaluated. Required for v1.3+. One of:
    *  "full", "authority_only", "limited", "none". */
   invariants_scope: string;
+  /** Canonical SDK identity. Required for v1.4+ (CHECKS_VERSION >= 9).
+   *  "sanna" for Python, "sanna-ts" for TypeScript. */
+  tool_name: string;
+  /** LLM model identifier, e.g. "claude-opus-4-7". Null = opt-out; absent = not captured. */
+  agent_model?: string | null;
+  /** LLM model provider, e.g. "anthropic". Null = opt-out; absent = not captured. */
+  agent_model_provider?: string | null;
+  /** LLM model version string, e.g. "20250514". Null = opt-out; absent = not captured. */
+  agent_model_version?: string | null;
   parent_receipts?: string[] | null;
   workflow_id?: string | null;
   content_mode?: ContentMode;
