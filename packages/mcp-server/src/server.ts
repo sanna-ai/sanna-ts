@@ -154,6 +154,18 @@ const TOOLS = [
           type: "string",
           description: "Path to public key for constitution signature verification (optional)",
         },
+        agent_model: {
+          type: "string",
+          description: "LLM model identifier, e.g. 'claude-opus-4-7' (optional)",
+        },
+        agent_model_provider: {
+          type: "string",
+          description: "LLM model provider, e.g. 'anthropic' (optional)",
+        },
+        agent_model_version: {
+          type: "string",
+          description: "LLM model version string, e.g. '20250514' (optional)",
+        },
       },
       required: ["query", "response"],
     },
@@ -465,6 +477,15 @@ function handleGenerateReceipt(
   const publicKeyPath = String(
     args.public_key_path ?? config.publicKeyPath ?? "",
   );
+  const agentModel = args.agent_model !== undefined
+    ? (args.agent_model === null ? null : String(args.agent_model))
+    : undefined;
+  const agentModelProvider = args.agent_model_provider !== undefined
+    ? (args.agent_model_provider === null ? null : String(args.agent_model_provider))
+    : undefined;
+  const agentModelVersion = args.agent_model_version !== undefined
+    ? (args.agent_model_version === null ? null : String(args.agent_model_version))
+    : undefined;
 
   if (!query) return errorResult("query is required");
   if (!response) return errorResult("response is required");
@@ -522,6 +543,9 @@ function handleGenerateReceipt(
     constitution_ref: constitutionRef,
     enforcementSurface: "middleware",
     invariantsScope: "full",
+    ...(agentModel !== undefined && { agent_model: agentModel }),
+    ...(agentModelProvider !== undefined && { agent_model_provider: agentModelProvider }),
+    ...(agentModelVersion !== undefined && { agent_model_version: agentModelVersion }),
   });
 
   // Sign receipt if key is available
