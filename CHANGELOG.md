@@ -3,6 +3,22 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [1.4.0] - 2026-04-21
+
+### Added
+- New required top-level field `tool_name` (v1.4+, required at cv>=9). Canonical SDK identity constant `"sanna-ts"` in TS. Participates in fingerprint as position 17.
+- New optional nullable fields `agent_model`, `agent_model_provider`, `agent_model_version`. Capture LLM model identity at receipt generation. Null = opt-out; absent = not captured. Fingerprint positions 18-20.
+- Verifier v1.4 required-field check: rejects cv>=9 receipts missing `tool_name`. Error text byte-equivalent to Python SDK and spec §13.
+- Verifier 20-field fingerprint dispatch for cv>=9.
+
+### Changed
+- `SPEC_VERSION` bumped to `"1.4"`.
+- `CHECKS_VERSION` bumped to `"9"`.
+- `TOOL_VERSION` changed to bare semver `"1.4.0"` (was tool-qualified `"sanna-ts/1.3.0"`). SDK identity now lives in the new `tool_name` field.
+- All 4 npm packages bumped to `1.4.0` (core was `1.1.1`; cli, gateway, mcp-server were `1.0.2`). Closes the package-version lag noted in SAN-217.
+- Fingerprint algorithm extended from 16 to 20 fields at cv=9. Legacy receipts (cv=8, cv=6/7, cv=5) unchanged.
+- Spec submodule advanced to sanna-protocol main (1532f28), picking up v1.4 schema and canonical fixtures.
+
 ## [1.3.0] - 2026-04-19
 
 ### Added
