@@ -7,12 +7,13 @@
  * verified by the TypeScript SDK — the core promise of cross-language
  * receipt portability.
  *
- * v1.3 fixtures use the 16-field fingerprint formula (checks_version "8"):
+ * v1.4 fixtures use the 20-field fingerprint formula (checks_version "9"):
  *   correlation_id | context_hash | output_hash | checks_version |
  *   checks_hash | constitution_hash | enforcement_hash | coverage_hash |
  *   authority_hash | escalation_hash | trust_hash | extensions_hash |
  *   parent_receipts_hash | workflow_id_hash |
- *   enforcement_surface_hash | invariants_scope_hash
+ *   enforcement_surface_hash | invariants_scope_hash |
+ *   tool_name_hash | agent_model_hash | agent_model_provider_hash | agent_model_version_hash
  */
 
 import { describe, it, expect } from "vitest";
@@ -329,5 +330,98 @@ describe("v1.3 cross-language parity (SAN-213 AC 13)", () => {
         "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
       );
     }
+  });
+});
+
+// ── v1.4 cross-language byte-parity (SAN-222) ────────────────────────
+
+describe("CRITICAL: v1.4 cross-language byte-parity (SAN-222)", () => {
+  // Expected stored full_fingerprints from Python-generated v1.4 fixtures
+  const V14_EXPECTED: Record<string, string> = {
+    "escalated":       "d9932331b489750573907c49604e0ced0cc61afc5eba1563c2b861d58a9a2958",
+    "fail-halted":     "129c14d0cd871cb2042cde73be2e559443b87f59ce3df505257e1424d15b5c94",
+    "full-featured":   "dc4b6846543caa60715d4b72455e8634a5a9a6b5be73dabec78b2db1f24a87cd",
+    "pass-single-check": "d3dbcafdbd5f2eb89a6ed8bdb73e6609dd8206036dd5139331bafbfb1fa03953",
+  };
+
+  const v14Fixtures = receiptFiles.filter((f) => {
+    const r = receipts[f.replace(".json", "")];
+    if (!r) return false;
+    const cv = parseInt(String(r.checks_version ?? "0"), 10);
+    return !isNaN(cv) && cv >= 9;
+  });
+
+  if (v14Fixtures.length === 0) {
+    it.skip("No v1.4 fixtures found (checks_version >= 9) — submodule may not have shipped them yet", () => {});
+  } else {
+    for (const file of v14Fixtures) {
+      const name = file.replace(".json", "");
+      const receipt = receipts[name];
+
+      describe(`v1.4 byte-parity: ${name}`, () => {
+        it("passes full verification with TypeScript verifier", () => {
+          const result = verifyReceipt(receipt, pubKey);
+          if (!result.valid) {
+            console.error(`V1.4 VERIFICATION FAILED for ${name}:`, result.errors);
+          }
+          expect(result.valid).toBe(true);
+          expect(result.errors).toEqual([]);
+        });
+
+        it("has tool_name field (v1.4 required)", () => {
+          expect(receipt.tool_name).toBeTruthy();
+        });
+
+        it("fingerprint byte-parity: TS-recomputed === Python-stored", () => {
+          const { full_fingerprint: computed } = computeFingerprints(receipt);
+          const stored = String(receipt.full_fingerprint ?? "");
+          if (computed !== stored) {
+            throw new Error(
+              `Fingerprint mismatch for fixture '${name}':\n` +
+              `  computed: ${computed}\n` +
+              `  stored:   ${stored}\n` +
+              `The TS 20-field formula does not match the Python reference.`
+            );
+          }
+          expect(computed).toBe(stored);
+        });
+
+        it("full_fingerprint matches expected constant", () => {
+          const expected = V14_EXPECTED[name];
+          if (!expected) {
+            throw new Error(`No expected fingerprint constant for fixture '${name}' — add it to V14_EXPECTED`);
+          }
+          const stored = String(receipt.full_fingerprint ?? "");
+          if (stored !== expected) {
+            throw new Error(
+              `Stored fingerprint for '${name}' does not match expected constant:\n` +
+              `  stored:   ${stored}\n` +
+              `  expected: ${expected}`
+            );
+          }
+          expect(stored).toBe(expected);
+        });
+      });
+    }
+  }
+
+  // Round-trip: TS-generated v1.4 receipt with tool_name="sanna-ts" verifies clean
+  it("v1.4 round-trip: TS-generated cv=9 receipt verifies clean", () => {
+    const r = generateReceipt({
+      correlation_id: "v14-round-trip",
+      inputs: {},
+      outputs: {},
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      agent_model: "claude-opus-4-7",
+      agent_model_provider: "anthropic",
+    }) as unknown as Record<string, unknown>;
+
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 });

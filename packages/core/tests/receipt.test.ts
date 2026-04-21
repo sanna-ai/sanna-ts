@@ -8,6 +8,8 @@ import {
   computeFingerprintInput,
   SPEC_VERSION,
   CHECKS_VERSION,
+  TOOL_VERSION,
+  TOOL_NAME,
 } from "../src/receipt.js";
 import { loadPrivateKey, loadPublicKey } from "../src/crypto.js";
 import { verify } from "../src/crypto.js";
@@ -497,5 +499,139 @@ describe("v1.3 enforcement override (SAN-213 AC 8)", () => {
       } as any);
       expect(receipt.status).not.toBe("PASS");
     }
+  });
+});
+
+// ── v1.4 tests (SAN-222) ─────────────────────────────────────────────
+
+describe("v1.4 version constants (SAN-222)", () => {
+  it("v1.4 version constants", () => {
+    expect(SPEC_VERSION).toBe("1.4");
+    expect(CHECKS_VERSION).toBe("9");
+    expect(TOOL_VERSION).toBe("1.4.0");
+    expect(TOOL_NAME).toBe("sanna-ts");
+  });
+});
+
+describe("v1.4 receipt shape (SAN-222)", () => {
+  it("generated receipt has tool_name: 'sanna-ts' by default", () => {
+    const receipt = generateReceipt({
+      correlation_id: "v14-default-tool-name",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    expect(receipt.tool_name).toBe("sanna-ts");
+  });
+
+  it("agent_model fields absent when not provided", () => {
+    const receipt = generateReceipt({
+      correlation_id: "v14-no-agent-model",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    }) as unknown as Record<string, unknown>;
+    expect("agent_model" in receipt).toBe(false);
+    expect("agent_model_provider" in receipt).toBe(false);
+    expect("agent_model_version" in receipt).toBe(false);
+  });
+
+  it("agent_model fields are null when explicitly null", () => {
+    const receipt = generateReceipt({
+      correlation_id: "v14-null-agent-model",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      agent_model: null,
+      agent_model_provider: null,
+      agent_model_version: null,
+    }) as unknown as Record<string, unknown>;
+    expect(receipt.agent_model).toBeNull();
+    expect(receipt.agent_model_provider).toBeNull();
+    expect(receipt.agent_model_version).toBeNull();
+  });
+
+  it("agent_model fields captured when provided", () => {
+    const receipt = generateReceipt({
+      correlation_id: "v14-with-agent-model",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      agent_model: "claude-opus-4-7",
+      agent_model_provider: "anthropic",
+      agent_model_version: "20250514",
+    });
+    expect(receipt.agent_model).toBe("claude-opus-4-7");
+    expect(receipt.agent_model_provider).toBe("anthropic");
+    expect(receipt.agent_model_version).toBe("20250514");
+  });
+});
+
+describe("v1.4 20-field fingerprint (SAN-222)", () => {
+  const EMPTY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+  it("20-field fingerprint structure when cv=9", () => {
+    const receipt = generateReceipt({
+      correlation_id: "v14-fp-count",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    }) as unknown as Record<string, unknown>;
+    // cv=9 is the default now
+    const fpInput = computeFingerprintInput(receipt);
+    const parts = fpInput.split("|");
+    expect(parts.length).toBe(20);
+  });
+
+  it("agent_model captured at fingerprint position 18 (0-indexed 17)", () => {
+    const { hashContent } = require("../src/hashing.js");
+    const agentModel = "claude-opus-4-7";
+    const expectedHash = hashContent(agentModel, 64);
+
+    const receipt = generateReceipt({
+      correlation_id: "v14-fp-agent-model",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      agent_model: agentModel,
+    }) as unknown as Record<string, unknown>;
+    const fpInput = computeFingerprintInput(receipt);
+    const parts = fpInput.split("|");
+    // Position 18 is 0-indexed [17]
+    expect(parts[17]).toBe(expectedHash);
+  });
+
+  it("agent_model null/undefined produces EMPTY_HASH at position 18 (0-indexed 17)", () => {
+    const receiptNull = generateReceipt({
+      correlation_id: "v14-fp-null-agent-model",
+      inputs: {},
+      outputs: {},
+      checks: [],
+      agent_model: null,
+    }) as unknown as Record<string, unknown>;
+    const partsNull = computeFingerprintInput(receiptNull).split("|");
+    expect(partsNull[17]).toBe(EMPTY_HASH);
+
+    // Also test absent (undefined)
+    const receiptAbsent = generateReceipt({
+      correlation_id: "v14-fp-absent-agent-model",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    }) as unknown as Record<string, unknown>;
+    const partsAbsent = computeFingerprintInput(receiptAbsent).split("|");
+    expect(partsAbsent[17]).toBe(EMPTY_HASH);
+  });
+
+  it("backward compat: cv=8 still produces 16-field fingerprint", () => {
+    const receipt = generateReceipt({
+      correlation_id: "v14-compat-cv8",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    }) as unknown as Record<string, unknown>;
+    const modified = { ...receipt, checks_version: "8" };
+    const parts = computeFingerprintInput(modified).split("|");
+    expect(parts.length).toBe(16);
   });
 });

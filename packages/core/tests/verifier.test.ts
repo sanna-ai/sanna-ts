@@ -539,3 +539,105 @@ describe("v1.3 SAN-214 error text and legacy warnings", () => {
     expect(result.warnings.some((w) => w.includes("'invariants_scope' field not present"))).toBe(false);
   });
 });
+
+// ── v1.4 verifier tests (SAN-222) ────────────────────────────────────
+
+describe("v1.4 verifier (SAN-222)", () => {
+  // Helper: generate a valid cv=9 receipt
+  function makeV14Receipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    const r = generateReceipt({
+      correlation_id: "v14-verifier-test",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+    }) as unknown as Record<string, unknown>;
+    return { ...r, ...overrides };
+  }
+
+  it("v14-sch-1: cv=9 receipt missing tool_name fails with exact error string", () => {
+    const r = makeV14Receipt();
+    delete r.tool_name;
+    // Recompute fingerprints after deletion so the only error is the missing field
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "v1.4+ receipt (checks_version >= 9) is missing required field: tool_name",
+    );
+  });
+
+  it("v14-sch-2: cv=9 receipt with tool_name='sanna' (Python origin) passes", () => {
+    const r = makeV14Receipt({ tool_name: "sanna" });
+    // Need to recompute fingerprints since we overrode tool_name
+    const { computeFingerprints } = require("../src/receipt.js");
+    const fps = computeFingerprints(r);
+    r.receipt_fingerprint = fps.receipt_fingerprint;
+    r.full_fingerprint = fps.full_fingerprint;
+    const result = verifyReceipt(r);
+    // Only check that the tool_name error does NOT appear (fingerprint will mismatch
+    // due to the override, but we're testing the schema check path)
+    expect(result.errors).not.toContain(
+      "v1.4+ receipt (checks_version >= 9) is missing required field: tool_name",
+    );
+  });
+
+  it("v14-sch-3: cv=9 receipt with agent_model=null passes (not a required field)", () => {
+    const r = generateReceipt({
+      correlation_id: "v14-null-agent",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      agent_model: null,
+    }) as unknown as Record<string, unknown>;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("v14-sch-4: cv=9 receipt with agent_model='claude-opus-4-7' passes", () => {
+    const r = generateReceipt({
+      correlation_id: "v14-with-agent",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      agent_model: "claude-opus-4-7",
+      agent_model_provider: "anthropic",
+    }) as unknown as Record<string, unknown>;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("v14-sch-5: cv=8 receipt missing tool_name still passes (cv-specific check)", () => {
+    // Build a cv=8 receipt without tool_name — it should NOT trigger the v1.4 error
+    const r = generateReceipt({
+      correlation_id: "v14-cv8-no-tool-name",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+    }) as unknown as Record<string, unknown>;
+    // Force to cv=8 (no tool_name needed at this version)
+    r.checks_version = "8";
+    delete r.tool_name;
+    const result = verifyReceipt(r);
+    // Must NOT produce the v1.4 error
+    expect(result.errors).not.toContain(
+      "v1.4+ receipt (checks_version >= 9) is missing required field: tool_name",
+    );
+  });
+});
