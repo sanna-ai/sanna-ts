@@ -939,7 +939,7 @@ describe("sanna_list_checks", () => {
     }
   });
 
-  it("should report checks_version = 8 (from core CHECKS_VERSION, not stale local) [SAN-213]", async () => {
+  it("should report checks_version = 9 (from core CHECKS_VERSION) [SAN-222]", async () => {
     const { client, cleanup } = await createTestClient();
     try {
       const result = await client.callTool({
@@ -947,7 +947,7 @@ describe("sanna_list_checks", () => {
         arguments: {},
       });
       const data = JSON.parse((result.content as any)[0].text);
-      expect(data.checks_version).toBe("8");
+      expect(data.checks_version).toBe("9");
     } finally {
       await cleanup();
     }

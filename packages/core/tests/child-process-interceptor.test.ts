@@ -551,7 +551,7 @@ describe("patchChildProcess — receipt fields", () => {
     expect(sink.receipts.length).toBe(1);
     const receipt = sink.receipts[0];
     expect(receipt.receipt_id).toBeTruthy();
-    expect(receipt.spec_version).toBe("1.3");
+    expect(receipt.spec_version).toBe("1.4");
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
   });
@@ -842,7 +842,7 @@ describe("Cross-surface — receipt integrity", () => {
     expect(constitution.cli_permissions).not.toBeNull();
   });
 
-  it("receipt has valid 14-field fingerprint", async () => {
+  it("receipt has valid 20-field fingerprint", async () => {
     const sink = makeSink();
     await patchChildProcess({
       constitutionPath: STRICT_CONSTITUTION,
@@ -856,12 +856,12 @@ describe("Cross-surface — receipt integrity", () => {
     const receipt = sink.receipts[0];
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
-    expect(receipt.checks_version).toBe("8");
+    expect(receipt.checks_version).toBe("9");
 
     // Verify fingerprint can be recomputed
     const fpInput = computeFingerprintInput(receipt as unknown as Record<string, unknown>);
     const parts = fpInput.split("|");
-    expect(parts.length).toBe(16);
+    expect(parts.length).toBe(20);
 
     // Recompute and verify match
     const { receipt_fingerprint, full_fingerprint } = computeFingerprints(

@@ -4,9 +4,9 @@ import type { Receipt } from "../src/types.js";
 
 function makeReceipt(id: string): Receipt {
   return {
-    spec_version: "1.3",
-    tool_version: "sanna-ts/1.3.0",
-    checks_version: "8",
+    spec_version: "1.4",
+    tool_version: "1.4.0",
+    checks_version: "9",
     receipt_id: id,
     receipt_fingerprint: "abcdef0123456789",
     full_fingerprint: "a".repeat(64),
@@ -22,6 +22,7 @@ function makeReceipt(id: string): Receipt {
     status: "PASS",
     enforcement_surface: "middleware",
     invariants_scope: "full",
+    tool_name: "sanna-ts",
   };
 }
 

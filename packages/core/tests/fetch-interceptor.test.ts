@@ -783,7 +783,7 @@ describe("Cross-surface — API receipt integrity", () => {
     expect(apiConst.authority_boundaries).toBeNull();
   });
 
-  it("receipt has valid 14-field fingerprint", async () => {
+  it("receipt has valid 20-field fingerprint", async () => {
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
 
@@ -792,11 +792,11 @@ describe("Cross-surface — API receipt integrity", () => {
     const receipt = sink.receipts[0];
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
-    expect(receipt.checks_version).toBe("8");
+    expect(receipt.checks_version).toBe("9");
 
     const fpInput = computeFingerprintInput(receipt as unknown as Record<string, unknown>);
     const parts = fpInput.split("|");
-    expect(parts.length).toBe(16);
+    expect(parts.length).toBe(20);
 
     const { receipt_fingerprint, full_fingerprint } = computeFingerprints(
       receipt as unknown as Record<string, unknown>,

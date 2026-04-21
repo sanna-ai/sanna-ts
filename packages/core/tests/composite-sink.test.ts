@@ -4,9 +4,9 @@ import { CompositeSink } from "../src/sinks/composite-sink.js";
 
 function makeReceipt(id = "test-001"): Receipt {
   return {
-    spec_version: "1.3",
-    tool_version: "sanna-ts/1.3.0",
-    checks_version: "8",
+    spec_version: "1.4",
+    tool_version: "1.4.0",
+    checks_version: "9",
     receipt_id: id,
     receipt_fingerprint: "a".repeat(16),
     full_fingerprint: "b".repeat(64),
@@ -22,6 +22,7 @@ function makeReceipt(id = "test-001"): Receipt {
     status: "PASS",
     enforcement_surface: "middleware",
     invariants_scope: "full",
+    tool_name: "sanna-ts",
   } as Receipt;
 }
 

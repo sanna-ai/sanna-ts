@@ -584,8 +584,8 @@ describe("v1.4 20-field fingerprint (SAN-222)", () => {
   });
 
   it("agent_model captured at fingerprint position 18 (0-indexed 17)", () => {
-    const { hashContent } = require("../src/hashing.js");
     const agentModel = "claude-opus-4-7";
+    // sha256("claude-opus-4-7") confirmed via Python reference
     const expectedHash = hashContent(agentModel, 64);
 
     const receipt = generateReceipt({

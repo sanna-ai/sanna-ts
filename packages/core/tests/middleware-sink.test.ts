@@ -197,22 +197,22 @@ describe("middleware sink integration", () => {
     expect(result.receipt.content_mode_source == null).toBe(true);
   });
 
-  it("receipt has spec_version 1.3", () => {
+  it("receipt has spec_version 1.4", () => {
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
     });
 
     const result = governed({ query: "test" });
-    expect(result.receipt.spec_version).toBe("1.3");
+    expect(result.receipt.spec_version).toBe("1.4");
   });
 
-  it("receipt has checks_version 8", () => {
+  it("receipt has checks_version 9", () => {
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
     });
 
     const result = governed({ query: "test" });
-    expect(result.receipt.checks_version).toBe("8");
+    expect(result.receipt.checks_version).toBe("9");
   });
 
   it("sink.store called even on halted receipts", async () => {

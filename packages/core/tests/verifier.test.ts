@@ -569,19 +569,27 @@ describe("v1.4 verifier (SAN-222)", () => {
     );
   });
 
-  it("v14-sch-2: cv=9 receipt with tool_name='sanna' (Python origin) passes", () => {
-    const r = makeV14Receipt({ tool_name: "sanna" });
-    // Need to recompute fingerprints since we overrode tool_name
-    const { computeFingerprints } = require("../src/receipt.js");
-    const fps = computeFingerprints(r);
-    r.receipt_fingerprint = fps.receipt_fingerprint;
-    r.full_fingerprint = fps.full_fingerprint;
+  it("v14-sch-2: cv=9 receipt with tool_name='sanna' (Python origin) passes schema check", () => {
+    // Build a fresh receipt with tool_name="sanna" (Python origin)
+    // Using generateReceipt with tool_name override
+    const r = generateReceipt({
+      correlation_id: "v14-python-tool-name",
+      inputs: { q: "test" },
+      outputs: { a: "ok" },
+      checks: [
+        { check_id: "C1", passed: true, severity: "info", evidence: null },
+      ],
+      enforcementSurface: "middleware",
+      invariantsScope: "full",
+      tool_name: "sanna",
+    }) as unknown as Record<string, unknown>;
     const result = verifyReceipt(r);
-    // Only check that the tool_name error does NOT appear (fingerprint will mismatch
-    // due to the override, but we're testing the schema check path)
+    // Must NOT produce the tool_name error (it's present, just has Python value)
     expect(result.errors).not.toContain(
       "v1.4+ receipt (checks_version >= 9) is missing required field: tool_name",
     );
+    // Receipt should be fully valid
+    expect(result.valid).toBe(true);
   });
 
   it("v14-sch-3: cv=9 receipt with agent_model=null passes (not a required field)", () => {
