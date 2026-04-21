@@ -117,6 +117,52 @@ export function computeFingerprintInput(receipt: Record<string, unknown>): strin
   const workflowId = receipt.workflow_id as string | null | undefined;
   const workflowIdHash = workflowId != null ? hashContent(workflowId, 64) : EMPTY_HASH;
 
+  // 20-field fingerprint for checks_version >= 9 (v1.4, SAN-222)
+  // Fields 17-20: tool_name, agent_model, agent_model_provider, agent_model_version hashes
+  const cv = parseInt(checksVersion, 10);
+
+  if (!isNaN(cv) && cv >= 9) {
+    const toolName = (receipt.tool_name as string) ?? "";
+    const toolNameHash = toolName ? hashContent(toolName, 64) : EMPTY_HASH;
+
+    const agentModel = receipt.agent_model as string | null | undefined;
+    const agentModelHash = agentModel ? hashContent(agentModel, 64) : EMPTY_HASH;
+
+    const agentModelProvider = receipt.agent_model_provider as string | null | undefined;
+    const agentModelProviderHash = agentModelProvider ? hashContent(agentModelProvider, 64) : EMPTY_HASH;
+
+    const agentModelVersion = receipt.agent_model_version as string | null | undefined;
+    const agentModelVersionHash = agentModelVersion ? hashContent(agentModelVersion, 64) : EMPTY_HASH;
+
+    const enforcementSurfaceRaw9 = (receipt.enforcement_surface as string) ?? "";
+    const invariantsScopeRaw9    = (receipt.invariants_scope as string) ?? "";
+    const enforcementSurfaceHash9 = hashContent(enforcementSurfaceRaw9, 64);
+    const invariantsScopeHash9    = hashContent(invariantsScopeRaw9, 64);
+
+    return [
+      correlationId,
+      contextHash,
+      outputHash,
+      checksVersion,
+      checksHash,
+      constitutionHash,
+      enforcementHash,
+      coverageHash,
+      authorityHash,
+      escalationHash,
+      trustHash,
+      extensionsHash,
+      parentReceiptsHash,
+      workflowIdHash,
+      enforcementSurfaceHash9,
+      invariantsScopeHash9,
+      toolNameHash,
+      agentModelHash,
+      agentModelProviderHash,
+      agentModelVersionHash,
+    ].join("|");
+  }
+
   // 12-field fingerprint for checks_version < 6 (backward compat with pre-v1.0 receipts)
   const cvInt = parseInt(checksVersion, 10);
   if (!isNaN(cvInt) && cvInt < 6) {
@@ -298,6 +344,10 @@ export interface ReceiptParams {
   reasoning_hash?: string | null;
   action_hash?: string | null;
   assurance?: "full" | "partial" | null;
+  tool_name?: string;       // defaults to TOOL_NAME if not provided
+  agent_model?: string | null;
+  agent_model_provider?: string | null;
+  agent_model_version?: string | null;
 }
 
 /**
@@ -386,6 +436,13 @@ export function generateReceipt(params: ReceiptParams): Receipt {
   // positions 15-16). Defaults match Python receipt.py:589-590.
   receiptBase.enforcement_surface = params.enforcementSurface ?? "middleware";
   receiptBase.invariants_scope    = params.invariantsScope    ?? "full";
+
+  // v1.4 fields (participate in fingerprint at positions 17-20)
+  receiptBase.tool_name = params.tool_name ?? TOOL_NAME;
+  // agent_model fields: omit when undefined; emit null when explicitly null
+  if (params.agent_model !== undefined) receiptBase.agent_model = params.agent_model;
+  if (params.agent_model_provider !== undefined) receiptBase.agent_model_provider = params.agent_model_provider;
+  if (params.agent_model_version !== undefined) receiptBase.agent_model_version = params.agent_model_version;
 
   // Metadata fields (do NOT participate in fingerprint)
   if (params.content_mode != null) receiptBase.content_mode = params.content_mode;

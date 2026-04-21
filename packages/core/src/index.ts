@@ -43,6 +43,8 @@ export {
   computeFingerprintInput,
   SPEC_VERSION,
   CHECKS_VERSION,
+  TOOL_VERSION,
+  TOOL_NAME,
 } from "./receipt.js";
 
 export type { ReceiptParams } from "./receipt.js";
