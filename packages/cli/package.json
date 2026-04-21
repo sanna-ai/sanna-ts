@@ -1,6 +1,6 @@
 {
   "name": "@sanna-ai/cli",
-  "version": "1.0.2",
+  "version": "1.4.0",
   "description": "CLI for the Sanna protocol",
   "license": "AGPL-3.0-only",
   "author": "Sanna Contributors",
