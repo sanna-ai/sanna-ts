@@ -53,13 +53,27 @@ function checkSchema(receipt: Record<string, unknown>): string[] {
     if (!(field in receipt)) errors.push(`Missing required field: ${field}`);
   }
 
+  // v1.4+ minimum-required-fields assertion (SAN-222).
+  // When checks_version >= 9, tool_name is required.
+  // Error message text must match Python byte-for-byte for cross-SDK
+  // debugging consistency.
+  const cvStr = String(receipt.checks_version ?? "");
+  const cvInt = parseInt(cvStr, 10);
+
+  if (!isNaN(cvInt) && cvInt >= 9) {
+    if (!receipt.tool_name) {
+      errors.push(
+        "v1.4+ receipt (checks_version >= 9) is missing required field: tool_name",
+      );
+    }
+  }
+
   // v1.3+ minimum-required-fields assertion (SAN-213).
   // Mirror of Python verify.py:900-919. When checks_version >= 8,
   // enforcement_surface and invariants_scope are required fields.
   // Error message text must match Python byte-for-byte for cross-SDK
   // debugging consistency.
-  const cvStr = String(receipt.checks_version ?? "");
-  const cvIntForV13Check = parseInt(cvStr, 10);
+  const cvIntForV13Check = cvInt;
   if (!isNaN(cvIntForV13Check) && cvIntForV13Check >= 8) {
     if (!receipt.enforcement_surface) {
       errors.push(
