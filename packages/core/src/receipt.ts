@@ -14,9 +14,10 @@ import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./type
 
 // ── Constants ────────────────────────────────────────────────────────
 
-export const SPEC_VERSION = "1.3";
-export const CHECKS_VERSION = "8"; // SAN-213 v1.3: 16-field fingerprint (positions 15-16 are enforcement_surface_hash and invariants_scope_hash)
-export const TOOL_VERSION = "sanna-ts/1.3.0";
+export const SPEC_VERSION = "1.4";
+export const CHECKS_VERSION = "9"; // SAN-222 v1.4: tool_name + agent_model fields (positions 17-20)
+export const TOOL_VERSION = "1.4.0"; // v1.4: bare semver (was "sanna-ts/1.3.0")
+export const TOOL_NAME = "sanna-ts"; // v1.4: canonical SDK identity per spec §2.17
 
 // ── Fingerprint computation ──────────────────────────────────────────
 
