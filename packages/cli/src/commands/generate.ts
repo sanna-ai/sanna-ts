@@ -46,6 +46,11 @@ export async function runGenerate(
     extensions: trace.extensions as Record<string, unknown> | undefined,
     enforcementSurface: "middleware",
     invariantsScope: "full",
+    // tool_name stays hardcoded to TOOL_NAME (emitter self-attests principle)
+    // agent_model pass-through from trace is appropriate (content about the work, not the emitter)
+    ...(trace.agent_model !== undefined && { agent_model: trace.agent_model as string | null }),
+    ...(trace.agent_model_provider !== undefined && { agent_model_provider: trace.agent_model_provider as string | null }),
+    ...(trace.agent_model_version !== undefined && { agent_model_version: trace.agent_model_version as string | null }),
   });
 
   if (options.signingKey) {
