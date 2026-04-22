@@ -31,4 +31,9 @@ jobs:
         run: npm run build
 
       - name: Test
+        env:
+          # Bypass the ReceiptStore temp-dir guard (store.ts:99) for CI test runs.
+          # LocalSQLiteSink tests use /tmp paths by design; guard is explicitly
+          # bypassable via this env var per its own error message.
+          SANNA_ALLOW_TEMP_DB: "1"
         run: npm test
