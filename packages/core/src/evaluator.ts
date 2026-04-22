@@ -76,7 +76,7 @@ export function normalizeAuthorityName(name: string): string {
  *   readFile === read_file === read.file
  *   but readFile !== readFileSystem
  */
-function matchesAction(pattern: string, action: string): boolean {
+export function matchesAction(pattern: string, action: string): boolean {
   if (!action || !action.trim()) return false;
   if (!pattern || !pattern.trim()) return false;
 

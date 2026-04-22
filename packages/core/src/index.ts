@@ -33,6 +33,7 @@ export {
 
 export {
   evaluateAuthority,
+  matchesAction,
   normalizeAuthorityName,
 } from "./evaluator.js";
 
