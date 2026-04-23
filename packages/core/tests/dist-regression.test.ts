@@ -135,4 +135,74 @@ describe("dist regression (SAN-220)", () => {
     // The error text matches the SAN-222 byte-exact requirement.
     expect(result.errors.some((e: string) => e.includes("tool_name"))).toBe(true);
   });
+
+  it("dist verifier rejects cv=8 receipt missing enforcement_surface", () => {
+    const r: any = generateReceipt({
+      correlation_id: "san-221-test-cv8-no-enforcement-surface",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    r.checks_version = "8";
+    delete r.enforcement_surface;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: enforcement_surface",
+    );
+  });
+
+  it("dist verifier rejects cv=8 receipt missing invariants_scope", () => {
+    const r: any = generateReceipt({
+      correlation_id: "san-221-test-cv8-no-invariants-scope",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    r.checks_version = "8";
+    delete r.invariants_scope;
+    const result = verifyReceipt(r);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "v1.3+ receipt (checks_version >= 8) is missing required field: invariants_scope",
+    );
+  });
+
+  it("dist verifier emits Pre-v1.3 legacy warnings for cv=6 receipt missing both fields", () => {
+    const r: any = generateReceipt({
+      correlation_id: "san-221-test-cv6-legacy-warnings",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    r.checks_version = "6";
+    delete r.enforcement_surface;
+    delete r.invariants_scope;
+    const result = verifyReceipt(r);
+    expect(result.warnings).toContain(
+      "Pre-v1.3 receipt (checks_version=6): 'enforcement_surface' field not present. This field was added in v1.3 (checks_version 8) and is not required at this protocol version. Re-generate with SDK >=1.3 for v1.3 integrity claims.",
+    );
+    expect(result.warnings).toContain(
+      "Pre-v1.3 receipt (checks_version=6): 'invariants_scope' field not present. This field was added in v1.3 (checks_version 8) and is not required at this protocol version.",
+    );
+  });
+
+  it("dist verifier emits Pre-v1.3 warning for cv=7 missing invariants_scope only", () => {
+    const r: any = generateReceipt({
+      correlation_id: "san-221-test-cv7-legacy-warning-asymmetric",
+      inputs: {},
+      outputs: {},
+      checks: [],
+    });
+    r.checks_version = "7";
+    r.enforcement_surface = "middleware";
+    delete r.invariants_scope;
+    const result = verifyReceipt(r);
+    expect(result.warnings).toContain(
+      "Pre-v1.3 receipt (checks_version=7): 'invariants_scope' field not present. This field was added in v1.3 (checks_version 8) and is not required at this protocol version.",
+    );
+    expect(
+      result.warnings.every((w: string) => !w.includes("'enforcement_surface'")),
+    ).toBe(true);
+  });
 });
