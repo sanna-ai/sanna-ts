@@ -19,6 +19,20 @@ Format: Keep a Changelog. Versioning: Semantic Versioning.
 - Fingerprint algorithm extended from 16 to 20 fields at cv=9. Legacy receipts (cv=8, cv=6/7, cv=5) unchanged.
 - Spec submodule advanced to sanna-protocol main (1532f28), picking up v1.4 schema and canonical fixtures.
 
+### Security (SAN-228)
+
+- **Pin 4 transitive deps to patched versions via `package.json` overrides:**
+  hono ≥4.12.12 (auth bypass, cookie injection, SSE injection, path traversal),
+  @hono/node-server ≥1.19.13 (auth bypass via encoded slashes),
+  express-rate-limit ≥8.2.2 (IPv4-mapped IPv6 bypass),
+  path-to-regexp ≥8.4.0 (ReDoS × 2).
+  All 4 are transitive through `@modelcontextprotocol/sdk`, which still
+  declares ranges admitting vulnerable versions. SAN-253 tracks upstream
+  coordination. Overrides can be removed when upstream catches up.
+- **CI gate:** `npm audit --omit=dev --audit-level=high` now fails PRs on
+  any HIGH or CRITICAL advisory in production deps.
+- **Dependabot:** enabled via `.github/dependabot.yml` for ongoing scans.
+
 ## [1.3.0] - 2026-04-19
 
 ### Added

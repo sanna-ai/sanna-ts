@@ -13,8 +13,13 @@
     "lint": "eslint 'packages/*/src/**/*.ts'"
   },
   "overrides": {
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "hono": "^4.12.12",
+    "@hono/node-server": "^1.19.13",
+    "express-rate-limit": "^8.2.2",
+    "path-to-regexp": "^8.4.0"
   },
+  "overridesRationale": "SAN-228: pin 4 transitive deps brought in by @modelcontextprotocol/sdk to patched versions. Upstream MCP SDK declares hono ^4.11.4 which admits vulnerable versions; SAN-253 tracks upstream coordination. Remove this block when MCP SDK catches up.",
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",
