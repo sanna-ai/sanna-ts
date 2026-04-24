@@ -44,7 +44,7 @@
     "adm-zip": "^0.5.16",
     "ajv": "^8.17.1",
     "better-sqlite3": "^11.8.1",
-    "canonicalize": "^2.0.0",
+    "canonicalize": "^3.0.0",
     "js-yaml": "^4.1.0",
     "safe-regex2": "^5.0.0"
   }
