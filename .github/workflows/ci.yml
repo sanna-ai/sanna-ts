@@ -27,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit production dependencies (SAN-228)
+        # Fails CI on HIGH or CRITICAL advisories in production deps.
+        # Dev deps not gated here; they have independent upgrade cadence.
+        # See SAN-253 for upstream MCP SDK coordination on transitive CVEs.
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build
         run: npm run build
 

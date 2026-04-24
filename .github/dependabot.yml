@@ -1,0 +1,20 @@
+# Dependabot configuration for sanna-ts (SAN-228).
+# Opens PRs when transitive or direct deps have security advisories
+# or new minor/patch releases. Enables ongoing verifier-side enforcement
+# of the no-HIGH-CVE policy complementing the npm audit CI gate.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Group patch/minor bumps into a single PR to reduce review noise.
+      # Security advisories get their own PRs automatically (not grouped).
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
