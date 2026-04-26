@@ -43,3 +43,6 @@ jobs:
           # bypassable via this env var per its own error message.
           SANNA_ALLOW_TEMP_DB: "1"
         run: npm test
+
+      - name: Validate state doc (SAN-326)
+        run: npx tsx tools/generate-state-doc.ts --check
