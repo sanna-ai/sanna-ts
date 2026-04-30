@@ -13,6 +13,7 @@
  */
 
 import { evaluateAuthority } from "./evaluator.js";
+import { hashContent } from "./hashing.js";
 import type { Constitution } from "./types.js";
 
 // Stable suppression_reason enum per v1.5 spec Section 2.21
@@ -69,26 +70,87 @@ export interface Manifest {
 export function generateManifest(
   constitution: Constitution | null,
   mcpTools?: string[],
+  surfaces?: Array<"mcp" | "cli" | "http">,
+  contentMode?: "full" | "redacted" | "hashes_only",
 ): Manifest {
-  const surfaces: Surfaces = {};
+  const surfacesDict: Partial<Record<"mcp" | "cli" | "http", Record<string, unknown>>> = {};
 
   if (mcpTools !== undefined) {
-    surfaces.mcp = _generateMcpSurface(constitution, mcpTools);
+    surfacesDict.mcp = _generateMcpSurface(constitution, mcpTools) as unknown as Record<string, unknown>;
   }
 
   if (constitution !== null && constitution.cli_permissions !== null) {
-    surfaces.cli = _generateCliSurface(constitution);
+    surfacesDict.cli = _generateCliSurface(constitution) as unknown as Record<string, unknown>;
   }
 
   if (constitution !== null && constitution.api_permissions !== null) {
-    surfaces.http = _generateHttpSurface(constitution);
+    surfacesDict.http = _generateHttpSurface(constitution) as unknown as Record<string, unknown>;
+  }
+
+  if (surfaces !== undefined) {
+    const allowedSet = new Set<string>(surfaces);
+    for (const k of Object.keys(surfacesDict) as Array<"mcp" | "cli" | "http">) {
+      if (!allowedSet.has(k)) delete surfacesDict[k];
+    }
+  }
+
+  if (contentMode === "redacted") {
+    for (const surface of Object.values(surfacesDict)) {
+      _redactForRedactedMode(surface);
+    }
+  } else if (contentMode === "hashes_only") {
+    for (const surface of Object.values(surfacesDict)) {
+      _redactForHashesOnlyMode(surface);
+    }
   }
 
   return {
     version: MANIFEST_VERSION,
     composition_basis: "static",
-    surfaces,
+    surfaces: surfacesDict as unknown as Surfaces,
   };
+}
+
+function _redactForRedactedMode(surface: Record<string, unknown>): void {
+  const suppressedList = (
+    (surface.tools_suppressed as string[] | undefined) ??
+    (surface.patterns_suppressed as string[] | undefined) ??
+    []
+  );
+  const supReasonsDict = (surface.suppression_reasons as Record<string, string> | undefined) ?? {};
+  const aggregate = suppressedList.map((name) => supReasonsDict[name] ?? "unknown");
+
+  for (const listField of ["tools_delivered", "tools_suppressed", "patterns_delivered", "patterns_suppressed"]) {
+    if (Array.isArray(surface[listField])) {
+      const count = (surface[listField] as unknown[]).length;
+      surface[listField] = Array(count).fill("<redacted>");
+    }
+  }
+
+  delete surface.suppression_reasons;
+  if (aggregate.length > 0) {
+    surface.aggregate_suppression_reasons = aggregate;
+  }
+}
+
+function _redactForHashesOnlyMode(surface: Record<string, unknown>): void {
+  for (const listField of ["tools_delivered", "tools_suppressed", "patterns_delivered", "patterns_suppressed"]) {
+    if (Array.isArray(surface[listField])) {
+      const items = surface[listField] as string[];
+      const hashed = items.map((name) => hashContent(name));
+      hashed.sort();
+      surface[listField] = hashed;
+    }
+  }
+
+  const supReasons = surface.suppression_reasons as Record<string, string> | undefined;
+  if (supReasons !== undefined && Object.keys(supReasons).length > 0) {
+    const newReasons: Record<string, string> = {};
+    for (const [k, v] of Object.entries(supReasons)) {
+      newReasons[hashContent(k)] = v;
+    }
+    surface.suppression_reasons = newReasons;
+  }
 }
 
 function _generateMcpSurface(

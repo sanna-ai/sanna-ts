@@ -32,6 +32,15 @@ function makeSink(): TestSink {
   return new TestSink();
 }
 
+// SAN-209: session_manifest is emitted at patch time; filter it from invocation receipts
+function invocationReceipts(sink: TestSink): Receipt[] {
+  return sink.receipts.filter((r: any) => r.event_type !== "session_manifest");
+}
+
+function firstInvocationReceipt(sink: TestSink): Receipt {
+  return invocationReceipts(sink)[0];
+}
+
 // Save the real fetch so we can mock it
 let realFetch: typeof globalThis.fetch;
 
@@ -191,8 +200,8 @@ describe("patchFetch — interception coverage", () => {
     await fetch("https://api.example.com/data");
 
     expect(mock).toHaveBeenCalledOnce();
-    expect(sink.receipts.length).toBe(1);
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(invocationReceipts(sink).length).toBe(1);
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
   });
 
   it("intercepts fetch POST", async () => {
@@ -202,7 +211,7 @@ describe("patchFetch — interception coverage", () => {
     await fetch("https://api.example.com/data", { method: "POST", body: "hello" });
 
     expect(mock).toHaveBeenCalledOnce();
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 
   it("intercepts fetch with Request object", async () => {
@@ -213,7 +222,7 @@ describe("patchFetch — interception coverage", () => {
     await fetch(req);
 
     expect(mock).toHaveBeenCalledOnce();
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 });
 
@@ -243,7 +252,7 @@ describe("patchFetch — justification", () => {
       headers: { "X-Sanna-Justification": "because tests" },
     });
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.reasoning_hash).toBe(hashContent("because tests"));
     expect(receipt.reasoning_hash).not.toBe(EMPTY_HASH);
   });
@@ -254,7 +263,7 @@ describe("patchFetch — justification", () => {
 
     await fetch("https://api.example.com/data");
 
-    expect(sink.receipts[0].reasoning_hash).toBe(EMPTY_HASH);
+    expect(firstInvocationReceipt(sink).reasoning_hash).toBe(EMPTY_HASH);
   });
 });
 
@@ -286,7 +295,7 @@ describe("patchFetch — authority enforcement", () => {
       fetch("https://unknown.com/api"),
     ).rejects.toThrow(TypeError);
 
-    expect(sink.receipts[0].event_type).toBe("api_invocation_halted");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_halted");
   });
 
   it("allows unlisted URL in permissive mode", async () => {
@@ -295,7 +304,7 @@ describe("patchFetch — authority enforcement", () => {
 
     const res = await fetch("https://unknown.com/api");
     expect(res.status).toBe(200);
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
   });
 
   it("filters by HTTP method", async () => {
@@ -318,7 +327,7 @@ describe("patchFetch — authority enforcement", () => {
       fetch("https://api.example.com/admin/users"),
     ).rejects.toThrow(TypeError);
     // rule_id is now in the enforcement block, not outputs
-    expect(sink.receipts[0].outputs).not.toHaveProperty("rule_id");
+    expect(firstInvocationReceipt(sink).outputs).not.toHaveProperty("rule_id");
   });
 });
 
@@ -331,8 +340,8 @@ describe("patchFetch — URL pattern matching", () => {
 
     await fetch("https://api.example.com/anything/here");
     // rule_id is now in the enforcement block, not outputs
-    expect(sink.receipts[0].outputs).not.toHaveProperty("rule_id");
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(firstInvocationReceipt(sink).outputs).not.toHaveProperty("rule_id");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
   });
 
   it("exact URL match", async () => {
@@ -341,8 +350,8 @@ describe("patchFetch — URL pattern matching", () => {
 
     await fetch("https://api.example.com/users");
     // Matches API001 first (wildcard)
-    expect(sink.receipts[0].outputs).not.toHaveProperty("rule_id");
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(firstInvocationReceipt(sink).outputs).not.toHaveProperty("rule_id");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
   });
 
   it("query params in URL do not break matching", async () => {
@@ -350,8 +359,8 @@ describe("patchFetch — URL pattern matching", () => {
     await patchWithMock(STRICT_CONSTITUTION, sink);
 
     await fetch("https://api.example.com/data?page=1&limit=10");
-    expect(sink.receipts.length).toBe(1);
-    expect(sink.receipts[0].outputs).not.toHaveProperty("rule_id");
+    expect(invocationReceipts(sink).length).toBe(1);
+    expect(firstInvocationReceipt(sink).outputs).not.toHaveProperty("rule_id");
   });
 
   it("non-matching URL halts in strict mode", async () => {
@@ -375,7 +384,7 @@ describe("patchFetch — exclusions", () => {
 
     // Mock called (pass-through), but no receipt emitted
     expect(mock).toHaveBeenCalledOnce();
-    expect(sink.receipts.length).toBe(0);
+    expect(invocationReceipts(sink).length).toBe(0);
   });
 
   it("supports custom excludeUrls", async () => {
@@ -393,7 +402,7 @@ describe("patchFetch — exclusions", () => {
     await fetch("https://my-internal.service/health");
 
     expect(mock).toHaveBeenCalledOnce();
-    expect(sink.receipts.length).toBe(0);
+    expect(invocationReceipts(sink).length).toBe(0);
   });
 
   it("excluded URLs produce no receipt", async () => {
@@ -404,7 +413,7 @@ describe("patchFetch — exclusions", () => {
     // but it's in the default exclusions
     await fetch("https://api.sanna.cloud/anything");
 
-    expect(sink.receipts.length).toBe(0);
+    expect(invocationReceipts(sink).length).toBe(0);
   });
 });
 
@@ -417,7 +426,7 @@ describe("patchFetch — receipt triad", () => {
 
     await fetch("https://api.example.com/data");
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.input_hash).toHaveLength(64);
 
     // Verify manually
@@ -436,7 +445,7 @@ describe("patchFetch — receipt triad", () => {
 
     await fetch("https://api.example.com/data");
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.action_hash).toHaveLength(64);
     // action_hash includes status_code, response body hash, and sorted response header keys
     expect(receipt.action_hash).not.toBe(EMPTY_HASH);
@@ -448,7 +457,7 @@ describe("patchFetch — receipt triad", () => {
 
     try { await fetch("https://unknown.com/blocked"); } catch { /* expected */ }
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     const haltedHash = hashObj({
       body_hash: EMPTY_HASH,
       response_headers_keys: [],
@@ -463,7 +472,7 @@ describe("patchFetch — receipt triad", () => {
 
     await fetch("https://api.example.com/data");
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.action_hash).not.toBe(receipt.input_hash);
   });
 
@@ -476,7 +485,7 @@ describe("patchFetch — receipt triad", () => {
       body: '{"key":"value"}',
     });
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     // input_hash should include the body hash
     const bodyHash = hashBytes(Buffer.from('{"key":"value"}', "utf-8"));
     const expectedInputHash = hashObj({
@@ -497,7 +506,7 @@ describe("patchFetch — receipt fields", () => {
     await patchWithMock(STRICT_CONSTITUTION, sink);
 
     await fetch("https://api.example.com/data");
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
   });
 
   it("sets correct event_type for halted request", async () => {
@@ -505,7 +514,7 @@ describe("patchFetch — receipt fields", () => {
     await patchWithMock(STRICT_CONSTITUTION, sink);
 
     try { await fetch("https://unknown.com/blocked"); } catch { /* expected */ }
-    expect(sink.receipts[0].event_type).toBe("api_invocation_halted");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_halted");
   });
 
   it("sets context_limitation based on justification", async () => {
@@ -515,10 +524,10 @@ describe("patchFetch — receipt fields", () => {
     await fetch("https://api.example.com/data", {
       headers: { "X-Sanna-Justification": "test" },
     });
-    expect(sink.receipts[0].context_limitation).toBe("api_execution");
+    expect(firstInvocationReceipt(sink).context_limitation).toBe("api_execution");
 
     await fetch("https://api.example.com/data");
-    expect(sink.receipts[1].context_limitation).toBe("api_no_justification");
+    expect(invocationReceipts(sink)[1].context_limitation).toBe("api_no_justification");
   });
 });
 
@@ -533,7 +542,7 @@ describe("patchFetch — invariants", () => {
       fetch("https://api.example.com/data?api_key=secret123"),
     ).rejects.toThrow(TypeError);
 
-    expect(sink.receipts[0].event_type).toBe("api_invocation_halted");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_halted");
   });
 
   it("allows clean URL", async () => {
@@ -541,7 +550,7 @@ describe("patchFetch — invariants", () => {
     await patchWithMock(STRICT_CONSTITUTION, sink);
 
     await fetch("https://api.example.com/data?page=1");
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
   });
 
   it("invariant overrides authority allow", async () => {
@@ -553,7 +562,7 @@ describe("patchFetch — invariants", () => {
       fetch("https://api.example.com/data?api_key=leaked"),
     ).rejects.toThrow(TypeError);
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     // enforcement.action="halted" (from invariant override to halt) → status overrides to FAIL
     expect(receipt.status).toBe("FAIL");
   });
@@ -569,7 +578,7 @@ describe("patchFetch — modes", () => {
     // Normally halted in strict mode
     const res = await fetch("https://unknown.com/api");
     expect(res.status).toBe(200);
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 
   it("audit mode receipt shows would-have-halted", async () => {
@@ -578,7 +587,7 @@ describe("patchFetch — modes", () => {
 
     await fetch("https://unknown.com/api");
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     // decision is now in enforcement.action (past-participle), not outputs
     expect(receipt.outputs).not.toHaveProperty("decision");
     const enf = (receipt as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
@@ -591,7 +600,7 @@ describe("patchFetch — modes", () => {
     await patchWithMock(STRICT_CONSTITUTION, sink, { mode: "passthrough" });
 
     await fetch("https://unknown.com/api");
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 });
 
@@ -617,11 +626,11 @@ describe("patchFetch — anti-enumeration", () => {
 
     try { await fetch("https://unknown.com/blocked"); } catch { /* expected */ }
 
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
     // enforcement.action="halted" overrides status from PASS to FAIL
-    expect(sink.receipts[0].status).toBe("FAIL");
+    expect(firstInvocationReceipt(sink).status).toBe("FAIL");
     // HALT must never appear as a status value
-    expect(JSON.stringify(sink.receipts[0])).not.toContain('"HALT"');
+    expect(JSON.stringify(firstInvocationReceipt(sink))).not.toContain('"HALT"');
   });
 });
 
@@ -640,7 +649,7 @@ describe("patchFetch — edge cases", () => {
     });
 
     await fetch("https://api.example.com/data");
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 
   it("unpatch restores original fetch", async () => {
@@ -653,7 +662,7 @@ describe("patchFetch — edge cases", () => {
     unpatchFetch();
     // After unpatch, fetch should be the mock we set (which patchFetch saved as original)
     // The mock is what patchFetch stored — unpatch restores it
-    expect(sink.receipts.length).toBe(0);
+    expect(invocationReceipts(sink).length).toBe(0);
   });
 
   it("allows all when no api_permissions in constitution", async () => {
@@ -688,7 +697,7 @@ boundaries:
     });
 
     await fetch("https://any.url.com/anything");
-    expect(sink.receipts[0].event_type).toBe("api_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("api_invocation_allowed");
 
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
@@ -789,7 +798,7 @@ describe("Cross-surface — API receipt integrity", () => {
 
     await fetch("https://api.example.com/data");
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
     expect(receipt.checks_version).toBe("9");
@@ -853,21 +862,21 @@ describe("patchFetch — v1.3 surface labels and enforcement vocabulary", () => 
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     await fetch("https://api.example.com/data");
-    expect((sink.receipts[0] as unknown as Record<string, unknown>).enforcement_surface).toBe("http_interceptor");
+    expect((firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement_surface).toBe("http_interceptor");
   });
 
   it("emits invariants_scope = authority_only on all receipts", async () => {
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     await fetch("https://api.example.com/data");
-    expect((sink.receipts[0] as unknown as Record<string, unknown>).invariants_scope).toBe("authority_only");
+    expect((firstInvocationReceipt(sink) as unknown as Record<string, unknown>).invariants_scope).toBe("authority_only");
   });
 
   it("allowed request: enforcement.action is past-participle 'allowed'", async () => {
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     await fetch("https://api.example.com/data");
-    const enf = (sink.receipts[0] as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
+    const enf = (firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
     expect(enf.action).toBe("allowed");
     expect(enf.action).not.toBe("allow");
   });
@@ -876,7 +885,7 @@ describe("patchFetch — v1.3 surface labels and enforcement vocabulary", () => 
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     try { await fetch("https://unknown.com/blocked"); } catch { /* expected */ }
-    const enf = (sink.receipts[0] as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
+    const enf = (firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
     expect(enf.action).toBe("halted");
     expect(enf.action).not.toBe("halt");
   });
@@ -885,22 +894,22 @@ describe("patchFetch — v1.3 surface labels and enforcement vocabulary", () => 
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     await fetch("https://api.example.com/data");
-    expect(sink.receipts[0].status).toBe("PASS");
+    expect(firstInvocationReceipt(sink).status).toBe("PASS");
   });
 
   it("halted request: status is FAIL (not HALT)", async () => {
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     try { await fetch("https://unknown.com/blocked"); } catch { /* expected */ }
-    expect(sink.receipts[0].status).toBe("FAIL");
-    expect(JSON.stringify(sink.receipts[0])).not.toContain('"HALT"');
+    expect(firstInvocationReceipt(sink).status).toBe("FAIL");
+    expect(JSON.stringify(firstInvocationReceipt(sink))).not.toContain('"HALT"');
   });
 
   it("decision/reason are in enforcement block, not outputs", async () => {
     const sink = makeSink();
     await patchWithMock(STRICT_CONSTITUTION, sink);
     await fetch("https://api.example.com/data");
-    const receipt = sink.receipts[0] as unknown as Record<string, unknown>;
+    const receipt = firstInvocationReceipt(sink) as unknown as Record<string, unknown>;
     expect(receipt.outputs).not.toHaveProperty("decision");
     expect(receipt.outputs).not.toHaveProperty("reason");
     expect(receipt.outputs).not.toHaveProperty("rule_id");

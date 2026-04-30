@@ -1,3 +1,35 @@
+## [Unreleased] -- 2026-04-30 (SAN-209)
+
+### Added
+- packages/core/src/manifest.ts: generateManifest gains surfaces and contentMode params per v1.5 Section 2.14 (post-SAN-377). Cross-SDK byte-equal with Python (SAN-206) via canonical hashContent helper.
+- Gateway _emitSessionManifest: passes surfaces=["mcp"] + contentMode. Captures _manifestFullFingerprint BEFORE persistence (Issue 18 governance-honest fail-closed).
+- Gateway _suppressedToolNames Set<string> populated by tools/list filter loop. Stores PREFIXED names. Used by _handleToolCall to substitute invocation_anomaly receipt for invocation_halted/invocation_escalated when name is suppressed.
+- Gateway _emitInvocationAnomaly: emits invocation_anomaly receipt per v1.5 Section 2.12 + 2.16.3. Receipt: event_type=invocation_anomaly, enforcement_surface=gateway, enforcement.action=halted, enforcement.enforcement_mode=halt, status=FAIL, invariants_scope=authority_only, parent_receipts=[<full_fingerprint>], extensions[com.sanna.anomaly]={attempted_tool, suppression_basis}. Signed via signReceipt if signing key configured.
+- packages/core/src/interceptors/child-process-interceptor.ts: patchChildProcess emits per-surface session_manifest at init time. surfaces=["cli"], enforcement_surface=cli_interceptor. Mode-aware fail-closed/fail-open.
+- packages/core/src/interceptors/fetch-interceptor.ts: patchFetch entry mirrors CLI. surfaces=["http"], enforcement_surface=http_interceptor.
+- New tests: manifest-content-vectors.test.ts (loads SAN-376 fixtures), manifest-content-modes.test.ts (redacted + hashes_only with AJV schema validation), gateway.test.ts TestSessionManifestParentChain (cannot_execute + must_escalate-suppressed + typo negative).
+
+### Changed
+- spec/ submodule pin bumped from sanna-protocol 5bfee54 to f89c8c9.
+- packages/core/src/evaluator.ts matchesCondition: normalize condition string the same way as context (underscores -> spaces) before keyword extraction. Fixes must_escalate matching when condition contains underscores (e.g. "send_email"). Pre-existing bug revealed by SAN-376 fixture MC-003.
+
+### Compatibility
+- generateManifest signature backwards-compatible.
+- Gateway session_manifest receipts now include only surfaces.mcp. SAN-203 inherited multi-surface defect resolved.
+- Gateway session_manifest receipts under contentMode=redacted/hashes_only apply spec-conformant redaction. SAN-203 inherited content_mode defect resolved.
+- New invocation_anomaly receipts SUBSTITUTE for invocation_halted/invocation_escalated on suppressed-tool calls (one receipt per call, not two).
+- CLI/HTTP interceptors emit session_manifest at patch time. mode=enforce raises if sink rejects manifest.
+
+### Out of scope (follow-ups filed)
+- CLI/HTTP invocation_anomaly variants: pending constitution opt-in field.
+- Cross-SDK fixture vectors (MC-008 + redacted/hashes_only): SAN-380 post-this-merge.
+- Race condition in session_manifest single-emission across both SDKs: SAN-381.
+- spec/impl divergence on cli/http suppression_reasons: SAN-378.
+
+### Tickets
+- SAN-209 (this entry)
+- Companion: SAN-206 (Python, MERGED 97668d1), SAN-203 (TS origin, annotated x2), SAN-202 (Python origin, annotated x2), SAN-204, SAN-205, SAN-376, SAN-377 (merged), SAN-378/379/380/381 (deferred).
+
 ## [Unreleased] -- 2026-04-30 (SAN-203)
 
 ### Added

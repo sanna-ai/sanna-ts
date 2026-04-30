@@ -35,6 +35,15 @@ function makeSink(): TestSink {
   return new TestSink();
 }
 
+// SAN-209: session_manifest is emitted at patch time; filter it from invocation receipts
+function invocationReceipts(sink: TestSink): Receipt[] {
+  return sink.receipts.filter((r: any) => r.event_type !== "session_manifest");
+}
+
+function firstInvocationReceipt(sink: TestSink): Receipt {
+  return invocationReceipts(sink)[0];
+}
+
 afterEach(() => {
   unpatchChildProcess();
 });
@@ -151,8 +160,8 @@ describe("patchChildProcess — interception coverage", () => {
     const cp = require_("node:child_process");
     const result = cp.execSync("echo hello", { encoding: "utf-8" });
     expect(result.trim()).toBe("hello");
-    expect(sink.receipts.length).toBe(1);
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_allowed");
+    expect(invocationReceipts(sink).length).toBe(1);
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_allowed");
   });
 
   it("intercepts exec with callback", async () => {
@@ -173,8 +182,8 @@ describe("patchChildProcess — interception coverage", () => {
     });
 
     // Receipt emitted in callback
-    expect(sink.receipts.length).toBe(1);
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_allowed");
+    expect(invocationReceipts(sink).length).toBe(1);
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_allowed");
   });
 
   it("intercepts spawnSync", async () => {
@@ -188,7 +197,7 @@ describe("patchChildProcess — interception coverage", () => {
     const cp = require_("node:child_process");
     const result = cp.spawnSync("echo", ["hello"], { encoding: "utf-8" });
     expect(result.stdout.trim()).toBe("hello");
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 
   it("intercepts spawn", async () => {
@@ -203,7 +212,7 @@ describe("patchChildProcess — interception coverage", () => {
     await new Promise<void>((resolve) => {
       const child = cp.spawn("echo", ["hello"]);
       child.on("close", () => {
-        expect(sink.receipts.length).toBe(1);
+        expect(invocationReceipts(sink).length).toBe(1);
         resolve();
       });
     });
@@ -220,7 +229,7 @@ describe("patchChildProcess — interception coverage", () => {
     const cp = require_("node:child_process");
     const result = cp.execFileSync("echo", ["hello"], { encoding: "utf-8" });
     expect(result.trim()).toBe("hello");
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 });
 
@@ -258,7 +267,7 @@ describe("patchChildProcess — justification", () => {
       justification: "because tests",
     });
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.reasoning_hash).toBe(hashContent("because tests"));
     expect(receipt.reasoning_hash).not.toBe(EMPTY_HASH);
   });
@@ -274,7 +283,7 @@ describe("patchChildProcess — justification", () => {
     const cp = require_("node:child_process");
     cp.execSync("echo hello", { encoding: "utf-8" });
 
-    expect(sink.receipts[0].reasoning_hash).toBe(EMPTY_HASH);
+    expect(firstInvocationReceipt(sink).reasoning_hash).toBe(EMPTY_HASH);
   });
 });
 
@@ -349,7 +358,7 @@ describe("patchChildProcess — authority enforcement", () => {
       const e = err as NodeJS.ErrnoException;
       expect(e.code).toBe("ENOENT");
     }
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_halted");
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_halted");
   });
 
   it("allows unlisted binary in permissive mode", async () => {
@@ -363,7 +372,7 @@ describe("patchChildProcess — authority enforcement", () => {
     const cp = require_("node:child_process");
     const result = cp.execSync("echo permissive-test", { encoding: "utf-8" });
     expect(result.trim()).toBe("permissive-test");
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_allowed");
   });
 
   it("matches argv patterns", async () => {
@@ -387,8 +396,8 @@ describe("patchChildProcess — authority enforcement", () => {
     // rm file.txt matches can_execute (CLI003)
     // Actually we can't test rm on a file that doesn't exist without it failing.
     // Instead verify the receipt shows the correct outputs (exit_code only)
-    expect(sink.receipts[0].outputs).not.toHaveProperty("rule_id");
-    expect(sink.receipts[0].outputs).not.toHaveProperty("decision");
+    expect(firstInvocationReceipt(sink).outputs).not.toHaveProperty("rule_id");
+    expect(firstInvocationReceipt(sink).outputs).not.toHaveProperty("decision");
   });
 });
 
@@ -405,7 +414,7 @@ describe("patchChildProcess — receipt triad", () => {
 
     const cp = require_("node:child_process");
     cp.execSync("echo determinism", { encoding: "utf-8" });
-    const hash1 = sink.receipts[0].input_hash;
+    const hash1 = firstInvocationReceipt(sink).input_hash;
 
     unpatchChildProcess();
     const sink2 = makeSink();
@@ -416,7 +425,7 @@ describe("patchChildProcess — receipt triad", () => {
     });
 
     cp.execSync("echo determinism", { encoding: "utf-8" });
-    const hash2 = sink2.receipts[0].input_hash;
+    const hash2 = firstInvocationReceipt(sink2).input_hash;
 
     expect(hash1).toBe(hash2);
     expect(hash1).toHaveLength(64);
@@ -442,7 +451,7 @@ describe("patchChildProcess — receipt triad", () => {
     const cp = require_("node:child_process");
     cp.execSync("echo action_test", { encoding: "utf-8" });
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.action_hash).toHaveLength(64);
     // action_hash should match the hash of {exit_code: 0, stderr: "", stdout: "action_test\n"}
     const expectedHash = hashObj({ exit_code: 0, stderr: "", stdout: "action_test\n" });
@@ -464,7 +473,7 @@ describe("patchChildProcess — receipt triad", () => {
       // expected
     }
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     const haltedHash = hashObj({ exit_code: null, stderr: "", stdout: "" });
     expect(receipt.action_hash).toBe(haltedHash);
   });
@@ -480,7 +489,7 @@ describe("patchChildProcess — receipt triad", () => {
     const cp = require_("node:child_process");
     cp.execSync("echo different", { encoding: "utf-8" });
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.action_hash).not.toBe(receipt.input_hash);
   });
 });
@@ -498,7 +507,7 @@ describe("patchChildProcess — receipt fields", () => {
 
     const cp = require_("node:child_process");
     cp.execSync("echo hello", { encoding: "utf-8" });
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_allowed");
   });
 
   it("sets correct event_type for halted command", async () => {
@@ -515,7 +524,7 @@ describe("patchChildProcess — receipt fields", () => {
     } catch {
       // expected
     }
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_halted");
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_halted");
   });
 
   it("sets context_limitation based on justification", async () => {
@@ -531,10 +540,10 @@ describe("patchChildProcess — receipt fields", () => {
       encoding: "utf-8",
       justification: "testing context",
     });
-    expect(sink.receipts[0].context_limitation).toBe("cli_execution");
+    expect(firstInvocationReceipt(sink).context_limitation).toBe("cli_execution");
 
     cp.execSync("echo no-justification", { encoding: "utf-8" });
-    expect(sink.receipts[1].context_limitation).toBe("cli_no_justification");
+    expect(invocationReceipts(sink)[1].context_limitation).toBe("cli_no_justification");
   });
 
   it("persists receipt to sink", async () => {
@@ -548,8 +557,8 @@ describe("patchChildProcess — receipt fields", () => {
     const cp = require_("node:child_process");
     cp.execSync("echo persisted", { encoding: "utf-8" });
 
-    expect(sink.receipts.length).toBe(1);
-    const receipt = sink.receipts[0];
+    expect(invocationReceipts(sink).length).toBe(1);
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.receipt_id).toBeTruthy();
     expect(receipt.spec_version).toBe("1.4");
     expect(receipt.receipt_fingerprint).toHaveLength(16);
@@ -577,7 +586,7 @@ describe("patchChildProcess — audit mode", () => {
     // Instead, test with spawnSync to catch the error if binary doesn't exist
     const result = cp.execSync("echo audit-mode-test", { encoding: "utf-8" });
     expect(result.trim()).toBe("audit-mode-test");
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 
   it("receipt shows would-have-halted in audit mode", async () => {
@@ -599,9 +608,9 @@ describe("patchChildProcess — audit mode", () => {
     } catch {
       // rm itself may fail, that's fine — the interceptor let it through
     }
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
     // In audit mode, the enforcement.action should still show the normalized decision
-    expect((sink.receipts[0] as unknown as Record<string, unknown>).enforcement).toMatchObject({ action: "halted" });
+    expect((firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement).toMatchObject({ action: "halted" });
   });
 
   it("passthrough mode generates receipts without enforcement", async () => {
@@ -616,7 +625,7 @@ describe("patchChildProcess — audit mode", () => {
     const cp = require_("node:child_process");
     const result = cp.execSync("echo passthrough", { encoding: "utf-8" });
     expect(result.trim()).toBe("passthrough");
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 });
 
@@ -660,11 +669,11 @@ describe("patchChildProcess — anti-enumeration", () => {
       // expected
     }
 
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
     // enforcement.action="halted" overrides computed status from PASS to FAIL
-    expect(sink.receipts[0].status).toBe("FAIL");
+    expect(firstInvocationReceipt(sink).status).toBe("FAIL");
     // HALT must never appear as a status value
-    expect(JSON.stringify(sink.receipts[0])).not.toContain('"HALT"');
+    expect(JSON.stringify(firstInvocationReceipt(sink))).not.toContain('"HALT"');
   });
 });
 
@@ -684,7 +693,7 @@ describe("patchChildProcess — edge cases", () => {
 
     const cp = require_("node:child_process");
     cp.execSync("echo idempotent", { encoding: "utf-8" });
-    expect(sink.receipts.length).toBe(1);
+    expect(invocationReceipts(sink).length).toBe(1);
   });
 
   it("unpatch restores originals", async () => {
@@ -736,7 +745,7 @@ boundaries:
     const cp = require_("node:child_process");
     const result = cp.execSync("echo no-cli-perms", { encoding: "utf-8" });
     expect(result.trim()).toBe("no-cli-perms");
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_allowed");
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_allowed");
 
     // Cleanup
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -853,7 +862,7 @@ describe("Cross-surface — receipt integrity", () => {
     const cp = require_("node:child_process");
     cp.execSync("echo fingerprint-test", { encoding: "utf-8" });
 
-    const receipt = sink.receipts[0];
+    const receipt = firstInvocationReceipt(sink);
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
     expect(receipt.checks_version).toBe("9");
@@ -887,8 +896,8 @@ describe("patchChildProcess — shell injection prevention", () => {
     const cp = require_("node:child_process");
     // echo is allowed, rm -rf is blocked — semicolon injection must be caught
     expect(() => cp.execSync("echo hello; rm -rf /", { encoding: "utf-8" })).toThrow(/ENOENT/);
-    expect(sink.receipts.length).toBe(1);
-    expect(sink.receipts[0].event_type).toBe("cli_invocation_halted");
+    expect(invocationReceipts(sink).length).toBe(1);
+    expect(firstInvocationReceipt(sink).event_type).toBe("cli_invocation_halted");
   });
 
   it("blocks exec with pipe to blocked command", async () => {
@@ -1031,7 +1040,7 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     cp.execSync("echo surface-test", { encoding: "utf-8" });
-    expect((sink.receipts[0] as unknown as Record<string, unknown>).enforcement_surface).toBe("cli_interceptor");
+    expect((firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement_surface).toBe("cli_interceptor");
   });
 
   it("emits invariants_scope = authority_only on all receipts", async () => {
@@ -1043,7 +1052,7 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     cp.execSync("echo scope-test", { encoding: "utf-8" });
-    expect((sink.receipts[0] as unknown as Record<string, unknown>).invariants_scope).toBe("authority_only");
+    expect((firstInvocationReceipt(sink) as unknown as Record<string, unknown>).invariants_scope).toBe("authority_only");
   });
 
   it("allowed command: enforcement.action is past-participle 'allowed'", async () => {
@@ -1055,7 +1064,7 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     cp.execSync("echo hello", { encoding: "utf-8" });
-    const enf = (sink.receipts[0] as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
+    const enf = (firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
     expect(enf.action).toBe("allowed");
   });
 
@@ -1068,7 +1077,7 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     try { cp.execSync("curl http://example.com", { encoding: "utf-8" }); } catch { /* expected */ }
-    const enf = (sink.receipts[0] as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
+    const enf = (firstInvocationReceipt(sink) as unknown as Record<string, unknown>).enforcement as Record<string, unknown>;
     expect(enf.action).toBe("halted");
     expect(enf.action).not.toBe("halt");
   });
@@ -1082,7 +1091,7 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     cp.execSync("echo hello", { encoding: "utf-8" });
-    expect(sink.receipts[0].status).toBe("PASS");
+    expect(firstInvocationReceipt(sink).status).toBe("PASS");
   });
 
   it("halted command: status is FAIL (not HALT)", async () => {
@@ -1094,8 +1103,8 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     try { cp.execSync("curl http://example.com", { encoding: "utf-8" }); } catch { /* expected */ }
-    expect(sink.receipts[0].status).toBe("FAIL");
-    expect(JSON.stringify(sink.receipts[0])).not.toContain('"HALT"');
+    expect(firstInvocationReceipt(sink).status).toBe("FAIL");
+    expect(JSON.stringify(firstInvocationReceipt(sink))).not.toContain('"HALT"');
   });
 
   it("decision/reason/rule_id are in enforcement block, not outputs", async () => {
@@ -1107,7 +1116,7 @@ describe("patchChildProcess — v1.3 surface labels and enforcement vocabulary",
     });
     const cp = require_("node:child_process");
     cp.execSync("echo hello", { encoding: "utf-8" });
-    const receipt = sink.receipts[0] as unknown as Record<string, unknown>;
+    const receipt = firstInvocationReceipt(sink) as unknown as Record<string, unknown>;
     // outputs should only have exit_code
     expect(receipt.outputs).not.toHaveProperty("decision");
     expect(receipt.outputs).not.toHaveProperty("reason");
