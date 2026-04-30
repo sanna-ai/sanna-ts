@@ -1,4 +1,25 @@
-// @sanna-ai/core — Sanna protocol SDK
+// @sanna-ai/core -- Sanna protocol SDK
+
+export {
+  generateManifest,
+  MANIFEST_VERSION,
+  VALID_SUPPRESSION_REASONS,
+  SUPPRESSION_REASON_CANNOT_EXECUTE,
+  SUPPRESSION_REASON_POLICY_DENIED,
+  SUPPRESSION_REASON_ESCALATION_SUPPRESSED,
+  SUPPRESSION_REASON_SERVER_DEFAULT_DENIED,
+  SUPPRESSION_REASON_CONSTITUTION_INVALID,
+  SUPPRESSION_REASON_CONTENT_MODE_REDACTED,
+  SUPPRESSION_REASON_UNKNOWN,
+} from "./manifest.js";
+
+export type {
+  Manifest,
+  McpSurface,
+  CliSurface,
+  HttpSurface,
+  Surfaces,
+} from "./manifest.js";
 
 export {
   EMPTY_HASH,

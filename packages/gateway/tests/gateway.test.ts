@@ -10,6 +10,7 @@ import {
   exportPrivateKeyPem,
   exportPublicKeyPem,
 } from "@sanna-ai/core";
+import type { Receipt, ReceiptSink, SinkResult } from "@sanna-ai/core";
 
 import { SannaGateway } from "../src/gateway.js";
 import type { GatewayConfig } from "../src/config.js";
@@ -422,7 +423,7 @@ describe("SannaGateway", () => {
     });
     const { client } = await createTestClient(config);
 
-    // We need to capture the receipt — the denied result returns status metadata
+    // We need to capture the receipt -- the denied result returns status metadata
     const result = await client.callTool({
       name: "echo_echo",
       arguments: { text: "blocked" },
@@ -432,5 +433,123 @@ describe("SannaGateway", () => {
     const parsed = JSON.parse(text);
     // The action in the denied status should use past-participle (if present)
     expect(parsed.status).toBe("denied");
+  }, 30_000);
+});
+
+// -- SAN-203: tools/list filtering + session_manifest single-emission --
+
+async function createTestClientWithSink(
+  config: GatewayConfig,
+  sink: ReceiptSink,
+): Promise<{ client: Client; gateway: SannaGateway }> {
+  const gw = new SannaGateway(config, sink);
+  gateway = gw;
+  await gw.start();
+
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test-client", version: "0.1.0" });
+  await gw.getServer().connect(serverTransport);
+  await client.connect(clientTransport);
+  return { client, gateway: gw };
+}
+
+class CaptureSink implements ReceiptSink {
+  readonly receipts: Receipt[] = [];
+  async store(receipt: Receipt): Promise<SinkResult> {
+    this.receipts.push(receipt);
+    return { stored: true };
+  }
+}
+
+describe("SAN-203: tools/list authority filtering", () => {
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "sanna-gw-test-"));
+  });
+
+  afterEach(async () => {
+    if (gateway) {
+      await gateway.stop();
+      gateway = null;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("cannot_execute tool is absent from tools/list response", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const { client } = await createTestClient(makeConfig());
+    const { tools } = await client.listTools();
+    const names = tools.map((t: any) => t.name);
+    expect(names).not.toContain("echo_echo");
+    expect(names).toContain("echo_fail");
+    expect(names).toContain("echo_slow");
+  }, 30_000);
+
+  it("must_escalate tool is visible when escalation_visibility=visible", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: [],
+          must_escalate: [{ condition: "echo" }],
+          can_execute: [],
+          default_escalation: "log",
+          escalation_visibility: "visible",
+        },
+      }),
+    );
+    const { client } = await createTestClient(makeConfig());
+    const { tools } = await client.listTools();
+    const names = tools.map((t: any) => t.name);
+    expect(names).toContain("echo_echo");
+  }, 30_000);
+
+  it("must_escalate tool is absent when escalation_visibility=suppressed", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: [],
+          must_escalate: [{ condition: "echo" }],
+          can_execute: [],
+          default_escalation: "log",
+          escalation_visibility: "suppressed",
+        },
+      }),
+    );
+    const { client } = await createTestClient(makeConfig());
+    const { tools } = await client.listTools();
+    const names = tools.map((t: any) => t.name);
+    expect(names).not.toContain("echo_echo");
+    expect(names).toContain("echo_fail");
+    expect(names).toContain("echo_slow");
+  }, 30_000);
+
+  it("session_manifest receipt emitted exactly once for two listTools calls", async () => {
+    writeFileSync(join(tmpDir, "constitution.yaml"), makeConstitutionYaml());
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(makeConfig(), sink);
+
+    await client.listTools();
+    await client.listTools();
+
+    const manifestReceipts = sink.receipts.filter(
+      (r: any) => r.event_type === "session_manifest",
+    );
+    expect(manifestReceipts).toHaveLength(1);
+    const r = manifestReceipts[0] as any;
+    expect(r.invariants_scope).toBe("none");
+    expect(r.enforcement_surface).toBe("gateway");
+    expect(r.status).toBe("PASS");
+    expect(r.extensions?.["com.sanna.manifest"]).toBeDefined();
   }, 30_000);
 });
