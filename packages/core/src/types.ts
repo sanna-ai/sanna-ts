@@ -79,6 +79,22 @@ export interface AuthorityBoundaries {
   must_escalate: EscalationRule[];
   can_execute: string[];
   default_escalation: string;
+  /**
+   * v1.5+: Whether must_escalate tools are visible to the agent at discovery
+   * time. "visible" (default, backward compatible) lists the tool and triggers
+   * escalation on attempted invocation. "suppressed" hides the tool from
+   * tools/list (anti-enumeration). Optional; defaults to "visible".
+   */
+  escalation_visibility?: "visible" | "suppressed";
+}
+
+/**
+ * Composition policy (v1.5+). Phase 1 contains only escalation_visibility.
+ * Phase 2 will add a rule engine. Optional; existing constitutions without
+ * this section parse normally and behave as if escalation_visibility=visible.
+ */
+export interface Composition {
+  escalation_visibility?: "visible" | "suppressed";
 }
 
 export interface Constitution {
@@ -94,6 +110,7 @@ export interface Constitution {
   cli_permissions: CliPermissions | null;
   api_permissions: ApiPermissions | null;
   trusted_sources: TrustedSources | null;
+  composition?: Composition | null;
 }
 
 // ── CLI Permissions types ────────────────────────────────────────────
@@ -167,8 +184,14 @@ export interface ApiAuthorityDecision {
 
 // ── Authority evaluation types ───────────────────────────────────────
 
-export type AuthorityDecisionType = "halt" | "allow" | "escalate";
-export type BoundaryType = "cannot_execute" | "must_escalate" | "can_execute" | "uncategorized";
+/**
+ * Phase 1 legal values: halt, allow, escalate, modify (v1.5+), defer (v1.5+).
+ * evaluateAuthority only returns halt/allow/escalate in v1.5; modify and defer
+ * are reserved for runtime-evaluated outcomes from future evaluators
+ * (SAN-369+).
+ */
+export type AuthorityDecisionType = "halt" | "allow" | "escalate" | "modify" | "defer";
+export type BoundaryType = "cannot_execute" | "must_escalate" | "can_execute" | "uncategorized" | "modify_with_constraints" | "defer_for_context";
 
 export interface AuthorityDecision {
   decision: AuthorityDecisionType;

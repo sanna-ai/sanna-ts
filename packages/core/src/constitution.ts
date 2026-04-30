@@ -31,6 +31,7 @@ import type {
   ApiPermissions,
   ApiEndpoint,
   ApiInvariant,
+  Composition,
 } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -339,6 +340,24 @@ export function validateConstitutionData(data: Record<string, unknown>): string[
           }
         }
       }
+      const ev = abObj.escalation_visibility;
+      if (ev !== undefined && ev !== "visible" && ev !== "suppressed") {
+        errors.push(`authority_boundaries.escalation_visibility '${ev}' must be 'visible' or 'suppressed'`);
+      }
+    }
+  }
+
+  // Composition (optional, v1.5+)
+  const composition = data.composition;
+  if (composition !== undefined && composition !== null) {
+    if (typeof composition !== "object" || Array.isArray(composition)) {
+      errors.push("composition must be an object");
+    } else {
+      const compObj = composition as Record<string, unknown>;
+      const compEv = compObj.escalation_visibility;
+      if (compEv !== undefined && compEv !== "visible" && compEv !== "suppressed") {
+        errors.push(`composition.escalation_visibility '${compEv}' must be 'visible' or 'suppressed'`);
+      }
     }
   }
 
@@ -455,6 +474,16 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
       must_escalate: mustEscalate,
       can_execute: (abData.can_execute as string[]) ?? [],
       default_escalation: defaultEscalation,
+      escalation_visibility: (abData.escalation_visibility as "visible" | "suppressed" | undefined) ?? "visible",
+    };
+  }
+
+  // Composition (optional, v1.5+)
+  let composition: Composition | null = null;
+  const compData = data.composition as Record<string, unknown> | undefined;
+  if (compData && typeof compData === "object") {
+    composition = {
+      escalation_visibility: (compData.escalation_visibility as "visible" | "suppressed" | undefined) ?? "visible",
     };
   }
 
@@ -564,6 +593,7 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     cli_permissions: cliPermissions,
     api_permissions: apiPermissions,
     trusted_sources: trustedSources,
+    composition,
   };
 }
 
@@ -648,7 +678,7 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
   };
 
   if (c.authority_boundaries) {
-    result.authority_boundaries = {
+    const ab: Record<string, unknown> = {
       cannot_execute: c.authority_boundaries.cannot_execute,
       must_escalate: c.authority_boundaries.must_escalate.map((r) => {
         const rule: Record<string, unknown> = { condition: r.condition };
@@ -659,9 +689,16 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
       can_execute: c.authority_boundaries.can_execute,
       default_escalation: c.authority_boundaries.default_escalation,
     };
+    if (c.authority_boundaries.escalation_visibility && c.authority_boundaries.escalation_visibility !== "visible") {
+      ab.escalation_visibility = c.authority_boundaries.escalation_visibility;
+    }
+    result.authority_boundaries = ab;
     result.escalation_targets = {
       default: c.authority_boundaries.default_escalation,
     };
+  }
+  if (c.composition && c.composition.escalation_visibility && c.composition.escalation_visibility !== "visible") {
+    result.composition = { escalation_visibility: c.composition.escalation_visibility };
   }
 
   if (c.cli_permissions) {
