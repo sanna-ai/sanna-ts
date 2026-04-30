@@ -122,7 +122,9 @@ function buildActionContext(action: string, params: Record<string, unknown>): st
  */
 function matchesCondition(condition: string, actionContext: string): boolean {
   const contextLower = normalizeSeparators(actionContext.normalize("NFKC")).toLowerCase();
-  const words = condition.normalize("NFKC").toLowerCase().split(/\s+/);
+  // Normalize condition the same way as context so "send_email" -> ["send", "email"]
+  const conditionNorm = normalizeSeparators(condition.normalize("NFKC")).toLowerCase();
+  const words = conditionNorm.split(/\s+/);
   const significant = words.filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
 
   if (significant.length === 0) return false;

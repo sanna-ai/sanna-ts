@@ -9,11 +9,12 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import type { ChildProcess, SpawnSyncReturns } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createPrivateKey } from "node:crypto";
 
-import type { ReceiptSink, Constitution } from "../types.js";
+import type { ReceiptSink, Constitution, Receipt } from "../types.js";
 import { hashObj, hashContent, EMPTY_HASH } from "../hashing.js";
-import { generateReceipt } from "../receipt.js";
+import { generateReceipt, signReceipt } from "../receipt.js";
+import { generateManifest } from "../manifest.js";
 import { evaluateCliAuthority, checkCliInvariants } from "./cli-authority.js";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -701,6 +702,25 @@ export async function patchChildProcess(options: PatchOptions): Promise<void> {
   cp.fork = patchedFork;
 
   _state.active = true;
+
+  // SAN-209: emit per-surface session_manifest receipt for the CLI surface
+  try {
+    _emitCliSessionManifest();
+  } catch (exc) {
+    if (options.mode === "enforce" || options.mode === undefined) {
+      _state.active = false;
+      unpatchChildProcess();
+      throw new Error(
+        `sanna CLI interceptor: failed to emit session_manifest in enforce ` +
+        `mode; refusing to start. Cause: ${exc instanceof Error ? exc.message : exc}`
+      );
+    } else {
+      console.warn(
+        `sanna CLI interceptor: session_manifest emission failed in ` +
+        `${options.mode} mode; continuing. Cause: ${exc instanceof Error ? exc.message : exc}`
+      );
+    }
+  }
 }
 
 export function unpatchChildProcess(): void {
@@ -722,4 +742,61 @@ export function unpatchChildProcess(): void {
   _state.options = null;
   _state.inIntercept = false;
   _state.active = false;
+}
+
+function _emitCliSessionManifest(): void {
+  if (_state.constitution === null || _state.sink === null || _state.options === null) {
+    throw new Error("CLI manifest emission requires constitution + sink + options");
+  }
+
+  const constitution = _state.constitution;
+  const sink = _state.sink;
+  const contentMode = _state.options.contentMode;
+  const signingKey = _state.options.signingKey;
+  const agentId = _state.options.agentId;
+
+  let manifestExt: Record<string, unknown>;
+  let statusOverride: "PASS" | "FAIL" = "PASS";
+  try {
+    manifestExt = generateManifest(
+      constitution,
+      undefined,
+      ["cli"],
+      contentMode,
+    ) as unknown as Record<string, unknown>;
+  } catch {
+    statusOverride = "FAIL";
+    manifestExt = { version: "0.1", composition_basis: "static", surfaces: {} };
+  }
+
+  const correlationId = `manifest-cli-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+  const receipt = generateReceipt({
+    correlation_id: correlationId,
+    inputs: { query: "session_manifest" },
+    outputs: { response: "" },
+    checks: [],
+    status: statusOverride,
+    enforcementSurface: "cli_interceptor",
+    invariantsScope: "none",
+    event_type: "session_manifest",
+    extensions: { "com.sanna.manifest": manifestExt },
+    content_mode: contentMode ?? null,
+    content_mode_source: contentMode ? "local_config" : null,
+  }) as Record<string, unknown>;
+
+  let finalReceipt: Record<string, unknown> = receipt;
+  if (signingKey) {
+    try {
+      const keyObject = createPrivateKey({ key: signingKey, format: "pem" });
+      finalReceipt = signReceipt(receipt, keyObject, agentId) as unknown as Record<string, unknown>;
+    } catch {
+      // Key conversion failure -- emit unsigned rather than drop the manifest
+    }
+  }
+
+  const result = sink.store(finalReceipt as unknown as Receipt);
+  if (result instanceof Promise) {
+    result.catch((exc) => { throw exc; });
+  }
 }

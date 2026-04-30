@@ -33,6 +33,11 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
+// SAN-209: session_manifest is emitted at patch time; filter it for invocation counts
+function invocationReceipts(sink: TestSink): Receipt[] {
+  return sink.receipts.filter((r: any) => r.event_type !== "session_manifest");
+}
+
 function createMockFetch(status = 200, body = "ok") {
   return vi.fn(async (_input: string | URL | Request, _init?: RequestInit): Promise<Response> => {
     return new Response(body, { status, headers: { "content-type": "text/plain" } });
@@ -275,7 +280,7 @@ describe("patchFetch — URL normalization prevents bypasses", () => {
     const response = await fetch("https://API.EXAMPLE.COM/data");
     expect(response.status).toBe(200);
     // Should be excluded (no receipt generated)
-    expect(sink.receipts.length).toBe(0);
+    expect(invocationReceipts(sink).length).toBe(0);
   });
 
   it("percent-encoded paths are normalized before matching", async () => {
@@ -294,6 +299,6 @@ describe("patchFetch — URL normalization prevents bypasses", () => {
     const response = await fetch("https://api.example.com/%64%61%74%61");
     expect(response.status).toBe(200);
     // Should be excluded via normalization
-    expect(sink.receipts.length).toBe(0);
+    expect(invocationReceipts(sink).length).toBe(0);
   });
 });

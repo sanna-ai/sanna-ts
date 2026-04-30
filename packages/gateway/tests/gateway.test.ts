@@ -552,4 +552,124 @@ describe("SAN-203: tools/list authority filtering", () => {
     expect(r.status).toBe("PASS");
     expect(r.extensions?.["com.sanna.manifest"]).toBeDefined();
   }, 30_000);
+
+  it("session_manifest surfaces contains only mcp (not cli/http)", async () => {
+    writeFileSync(join(tmpDir, "constitution.yaml"), makeConstitutionYaml());
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(makeConfig(), sink);
+
+    await client.listTools();
+
+    const manifestReceipts = sink.receipts.filter(
+      (r: any) => r.event_type === "session_manifest",
+    );
+    expect(manifestReceipts).toHaveLength(1);
+    const manifest = (manifestReceipts[0] as any).extensions["com.sanna.manifest"];
+    expect(manifest.surfaces.mcp).toBeDefined();
+    expect(manifest.surfaces.cli).toBeUndefined();
+    expect(manifest.surfaces.http).toBeUndefined();
+  }, 30_000);
+});
+
+describe("SAN-209 invocation_anomaly parent-chain integrity", () => {
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "sanna-gw-anomaly-"));
+  });
+
+  afterEach(async () => {
+    if (gateway) {
+      await gateway.stop();
+      gateway = null;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("cannot_execute path: emits invocation_anomaly with parent_receipts chain", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(makeConfig(), sink);
+
+    await client.listTools();
+
+    const manifestReceipts = sink.receipts.filter((r: any) => r.event_type === "session_manifest");
+    expect(manifestReceipts).toHaveLength(1);
+    const manifestFp = (manifestReceipts[0] as any).full_fingerprint;
+    const manifestSurface = (manifestReceipts[0] as any).extensions["com.sanna.manifest"].surfaces.mcp;
+    expect(manifestSurface.tools_suppressed).toContain("echo");
+
+    const result = await client.callTool({ name: "echo_echo", arguments: { message: "test" } });
+    expect(result.isError).toBe(true);
+
+    const anomalyReceipts = sink.receipts.filter((r: any) => r.event_type === "invocation_anomaly");
+    expect(anomalyReceipts).toHaveLength(1);
+
+    const anomaly = anomalyReceipts[0] as any;
+    expect(anomaly.status).toBe("FAIL");
+    expect(anomaly.enforcement.action).toBe("halted");
+    expect(anomaly.enforcement.enforcement_mode).toBe("halt");
+    expect(anomaly.parent_receipts).toEqual([manifestFp]);
+    expect(anomaly.extensions["com.sanna.anomaly"].attempted_tool).toBe("echo_echo");
+    expect(anomaly.extensions["com.sanna.anomaly"].suppression_basis).toBe("session_manifest");
+  }, 30_000);
+
+  it("must_escalate + escalation_visibility=suppressed: emits invocation_anomaly, not invocation_escalated", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: [],
+          must_escalate: [{ condition: "echo" }],
+          can_execute: [],
+          default_escalation: "log",
+          escalation_visibility: "suppressed",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(makeConfig(), sink);
+
+    await client.listTools();
+    const result = await client.callTool({ name: "echo_echo", arguments: { message: "test" } });
+    expect(result.isError).toBe(true);
+
+    const anomalyReceipts = sink.receipts.filter((r: any) => r.event_type === "invocation_anomaly");
+    expect(anomalyReceipts).toHaveLength(1);
+    expect((anomalyReceipts[0] as any).enforcement.enforcement_mode).toBe("halt");
+
+    const escalatedReceipts = sink.receipts.filter((r: any) => r.event_type === "invocation_escalated");
+    expect(escalatedReceipts).toHaveLength(0);
+  }, 30_000);
+
+  it("typo tool name (never in catalog) does NOT emit invocation_anomaly", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(makeConfig(), sink);
+
+    await client.listTools();
+    const result = await client.callTool({ name: "echo_garbage_typo_name", arguments: {} });
+    expect(result.isError).toBe(true);
+
+    const anomalyReceipts = sink.receipts.filter((r: any) => r.event_type === "invocation_anomaly");
+    expect(anomalyReceipts).toHaveLength(0);
+  }, 30_000);
 });

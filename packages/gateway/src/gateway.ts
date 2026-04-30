@@ -95,6 +95,8 @@ export class SannaGateway {
   private _workflowId: string | null = null;
   private _escalationReceiptFingerprints = new Map<string, string>();
   private _manifestEmitted = false;
+  private _manifestFullFingerprint: string | null = null;
+  private _suppressedToolNames: Set<string> = new Set();
   private _allTools: Array<{
     name: string;
     description?: string;
@@ -324,6 +326,8 @@ export class SannaGateway {
       const escalationVisibility =
         this._constitution.authority_boundaries?.escalation_visibility ?? "visible";
 
+      this._suppressedToolNames = new Set();
+
       const filtered = this._allTools.filter((t) => {
         const dsEntry = this._downstreams.get(t.downstream);
         if (!dsEntry) return true; // meta-tools (no downstream entry) always visible
@@ -334,13 +338,25 @@ export class SannaGateway {
           this._config.enforcement.default_policy,
         );
 
-        if (policyOverride === "deny") return false;
-        if (policyOverride === "escalate" && escalationVisibility === "suppressed") return false;
+        if (policyOverride === "deny") {
+          this._suppressedToolNames.add(t.name);
+          return false;
+        }
+        if (policyOverride === "escalate" && escalationVisibility === "suppressed") {
+          this._suppressedToolNames.add(t.name);
+          return false;
+        }
 
         if (policyOverride === null) {
           const decision = evaluateAuthority(t.originalName, {}, this._constitution);
-          if (decision.decision === "halt") return false;
-          if (decision.decision === "escalate" && escalationVisibility === "suppressed") return false;
+          if (decision.decision === "halt") {
+            this._suppressedToolNames.add(t.name);
+            return false;
+          }
+          if (decision.decision === "escalate" && escalationVisibility === "suppressed") {
+            this._suppressedToolNames.add(t.name);
+            return false;
+          }
         }
 
         return true;
@@ -451,6 +467,21 @@ export class SannaGateway {
     wasEscalated = false,
     parentReceipts?: string[] | null,
   ) {
+    // SAN-209: invocation_anomaly substitute path. Short-circuit BEFORE authority
+    // evaluation when name is in _suppressedToolNames AND session_manifest fingerprint
+    // is recorded. Handles both cannot_execute and must_escalate-visibility-suppressed
+    // via single condition. Spec v1.5 Section 2.12 + 2.16.3.
+    if (
+      this._suppressedToolNames.has(namespacedName) &&
+      this._manifestFullFingerprint !== null
+    ) {
+      await this._emitInvocationAnomaly(namespacedName);
+      return {
+        content: [{ type: "text", text: `Tool not available: ${namespacedName}` }],
+        isError: true,
+      };
+    }
+
     // a. Parse namespace
     const parsed = parseNamespacedTool(namespacedName);
     if (!parsed) {
@@ -850,6 +881,8 @@ export class SannaGateway {
       manifestExt = generateManifest(
         this._constitution,
         mcpToolNames,
+        ["mcp"],
+        this._contentMode ?? undefined,
       ) as unknown as Record<string, unknown>;
     } catch {
       statusOverride = "FAIL";
@@ -873,6 +906,10 @@ export class SannaGateway {
       event_type: "session_manifest",
     }) as Record<string, unknown>;
 
+    // SAN-209 Issue 18: capture full_fingerprint BEFORE persistence so anomaly
+    // receipts can chain even if sink fails.
+    this._manifestFullFingerprint = receipt.full_fingerprint as string;
+
     let finalReceipt: Record<string, unknown> = receipt;
     if (this._signingKey && this._config.receipts?.sign !== false) {
       finalReceipt = signReceipt(
@@ -883,6 +920,56 @@ export class SannaGateway {
     }
 
     this._storeReceipt(finalReceipt);
+  }
+
+  private async _emitInvocationAnomaly(attemptedTool: string): Promise<void> {
+    const correlationId = `anomaly-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const timestamp = new Date().toISOString();
+
+    const receipt = generateReceipt({
+      correlation_id: correlationId,
+      inputs: { query: `tools/call name=${attemptedTool}` },
+      outputs: { response: "" },
+      checks: [],
+      status: "FAIL",
+      parent_receipts: [this._manifestFullFingerprint!],
+      enforcementSurface: "gateway",
+      invariantsScope: "authority_only",
+      event_type: "invocation_anomaly",
+      enforcement: {
+        action: "halted",
+        reason: "tool_suppressed_by_constitution",
+        failed_checks: [],
+        enforcement_mode: "halt",
+        timestamp,
+      },
+      extensions: {
+        "com.sanna.anomaly": {
+          attempted_tool: attemptedTool,
+          suppression_basis: "session_manifest",
+        },
+      },
+    }) as Record<string, unknown>;
+
+    if (this._contentMode) {
+      receipt.content_mode = this._contentMode;
+      receipt.content_mode_source = "local_config";
+    }
+
+    let finalReceipt: Record<string, unknown> = receipt;
+    if (this._signingKey && this._config.receipts?.sign !== false) {
+      finalReceipt = signReceipt(
+        receipt,
+        this._signingKey,
+        this._constitution.identity?.agent_name ?? "sanna-gateway",
+      );
+    }
+
+    try {
+      this._storeReceipt(finalReceipt);
+    } catch (exc) {
+      console.error(`invocation_anomaly receipt persist failed: ${exc}`);
+    }
   }
 
   private _storeReceipt(receipt: Record<string, unknown>): void {
