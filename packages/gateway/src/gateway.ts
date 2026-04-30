@@ -839,7 +839,10 @@ export class SannaGateway {
   }
 
   private async _emitSessionManifest(): Promise<void> {
-    const mcpToolNames = this._allTools.map((t) => t.name);
+    // Use originalName so evaluateAuthority can match against constitution patterns.
+    // Namespaced names (e.g. "echo_echo") normalize differently from "echo" and
+    // would not match constitution entries like cannot_execute: ["echo"].
+    const mcpToolNames = this._allTools.map((t) => t.originalName);
 
     let manifestExt: Record<string, unknown>;
     let statusOverride: "PASS" | "FAIL" = "PASS";
