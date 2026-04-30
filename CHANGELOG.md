@@ -1,3 +1,22 @@
+## [Unreleased] -- 2026-04-30 (SAN-205)
+
+### Added
+- `AuthorityBoundaries.escalation_visibility` (v1.5+, default `"visible"`; backward compatible).
+- `Composition` interface + optional `Constitution.composition` field.
+- `AuthorityDecisionType` extended from `"halt" | "allow" | "escalate"` to add `"modify"` and `"defer"` (v1.5+; reserved for future runtime evaluators starting with SAN-369). evaluateAuthority does not return either value in v1.5.
+- `BoundaryType` legal values extended with `modify_with_constraints` and `defer_for_context` (v1.5+; reserved).
+
+### Hash backward-compat
+- `constitutionToSignableDict` builds `authority_boundaries` manually; `escalation_visibility` is included ONLY when non-default (`"suppressed"`). Pre-v1.5 constitutions hash IDENTICALLY without re-signing. Mirrors the Python fix from PR #36 (sanna-repo SAN-205 Python half).
+
+### Compatibility
+- v1.4-era constitutions WITHOUT escalation_visibility or composition parse cleanly; defaults applied. No migration needed.
+- Cross-language hash parity preserved: TS and Python produce identical hashes for the same v1.4-era constitution.
+
+### Tickets
+- SAN-205 TS half (this entry; companion Python PR #36 already merged in sanna-repo).
+- Companion: SAN-203 (TS gateway filtering, depends on this), SAN-204, SAN-375 (already merged), SAN-374 (already merged).
+
 ## [Unreleased] -- 2026-04-30
 
 ### Changed
