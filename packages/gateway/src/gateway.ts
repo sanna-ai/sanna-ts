@@ -24,6 +24,7 @@ import {
   loadPublicKey,
   ReceiptStore,
   LocalSQLiteSink,
+  generateManifest,
 } from "@sanna-ai/core";
 import type {
   Constitution,
@@ -93,6 +94,7 @@ export class SannaGateway {
   private _contentMode: ContentMode = null;
   private _workflowId: string | null = null;
   private _escalationReceiptFingerprints = new Map<string, string>();
+  private _manifestEmitted = false;
   private _allTools: Array<{
     name: string;
     description?: string;
@@ -317,10 +319,40 @@ export class SannaGateway {
   // ── Handler registration ─────────────────────────────────────────
 
   private _registerHandlers(): void {
-    // tools/list handler
+    // tools/list handler: filter via authority + emit session_manifest on first call
     this._server.setRequestHandler(ListToolsRequestSchema, async () => {
+      const escalationVisibility =
+        this._constitution.authority_boundaries?.escalation_visibility ?? "visible";
+
+      const filtered = this._allTools.filter((t) => {
+        const dsEntry = this._downstreams.get(t.downstream);
+        if (!dsEntry) return true; // meta-tools (no downstream entry) always visible
+
+        const policyOverride = resolveToolPolicy(
+          t.originalName,
+          dsEntry.config,
+          this._config.enforcement.default_policy,
+        );
+
+        if (policyOverride === "deny") return false;
+        if (policyOverride === "escalate" && escalationVisibility === "suppressed") return false;
+
+        if (policyOverride === null) {
+          const decision = evaluateAuthority(t.originalName, {}, this._constitution);
+          if (decision.decision === "halt") return false;
+          if (decision.decision === "escalate" && escalationVisibility === "suppressed") return false;
+        }
+
+        return true;
+      });
+
+      if (!this._manifestEmitted) {
+        await this._emitSessionManifest();
+        this._manifestEmitted = true;
+      }
+
       return {
-        tools: this._allTools.map((t) => ({
+        tools: filtered.map((t) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
@@ -804,6 +836,50 @@ export class SannaGateway {
     }
 
     return receipt as Record<string, unknown>;
+  }
+
+  private async _emitSessionManifest(): Promise<void> {
+    const mcpToolNames = this._allTools.map((t) => t.name);
+
+    let manifestExt: Record<string, unknown>;
+    let statusOverride: "PASS" | "FAIL" = "PASS";
+    try {
+      manifestExt = generateManifest(
+        this._constitution,
+        mcpToolNames,
+      ) as unknown as Record<string, unknown>;
+    } catch {
+      statusOverride = "FAIL";
+      manifestExt = { version: "0.1", composition_basis: "static", surfaces: {} };
+    }
+
+    const correlationId = `manifest-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+    const receipt = generateReceipt({
+      correlation_id: correlationId,
+      inputs: { query: "session_manifest" },
+      outputs: { content: null },
+      checks: [],
+      status: statusOverride,
+      workflow_id: this._workflowId,
+      content_mode: this._contentMode,
+      content_mode_source: this._contentMode ? "local_config" : null,
+      enforcementSurface: "gateway",
+      invariantsScope: "none",
+      extensions: { "com.sanna.manifest": manifestExt },
+      event_type: "session_manifest",
+    }) as Record<string, unknown>;
+
+    let finalReceipt: Record<string, unknown> = receipt;
+    if (this._signingKey && this._config.receipts?.sign !== false) {
+      finalReceipt = signReceipt(
+        receipt,
+        this._signingKey,
+        this._constitution.identity?.agent_name ?? "sanna-gateway",
+      );
+    }
+
+    this._storeReceipt(finalReceipt);
   }
 
   private _storeReceipt(receipt: Record<string, unknown>): void {
