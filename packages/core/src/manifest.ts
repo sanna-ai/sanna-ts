@@ -46,12 +46,14 @@ export interface McpSurface {
 export interface CliSurface {
   patterns_delivered: string[];
   patterns_suppressed: string[];
+  suppression_reasons: Record<string, string>;
   mode: string;
 }
 
 export interface HttpSurface {
   patterns_delivered: string[];
   patterns_suppressed: string[];
+  suppression_reasons: Record<string, string>;
   mode: string;
 }
 
@@ -204,7 +206,7 @@ function _generateMcpSurface(
 function _generateCliSurface(constitution: Constitution): CliSurface {
   const cp = constitution.cli_permissions;
   if (cp === null) {
-    return { patterns_delivered: [], patterns_suppressed: [], mode: "strict" };
+    return { patterns_delivered: [], patterns_suppressed: [], suppression_reasons: {}, mode: "strict" };
   }
 
   const escalationVisibility =
@@ -212,24 +214,29 @@ function _generateCliSurface(constitution: Constitution): CliSurface {
 
   const delivered: string[] = [];
   const suppressed: string[] = [];
+  const suppressionReasons: Record<string, string> = {};
 
   for (const cmd of cp.commands) {
+    const pattern = cmd.binary;
     if (cmd.authority === "cannot_execute") {
-      suppressed.push(cmd.binary);
+      suppressed.push(pattern);
+      suppressionReasons[pattern] = SUPPRESSION_REASON_CANNOT_EXECUTE;
     } else if (cmd.authority === "must_escalate") {
       if (escalationVisibility === "suppressed") {
-        suppressed.push(cmd.binary);
+        suppressed.push(pattern);
+        suppressionReasons[pattern] = SUPPRESSION_REASON_ESCALATION_SUPPRESSED;
       } else {
-        delivered.push(cmd.binary);
+        delivered.push(pattern);
       }
     } else {
-      delivered.push(cmd.binary);
+      delivered.push(pattern);
     }
   }
 
   return {
     patterns_delivered: [...delivered].sort(),
     patterns_suppressed: [...suppressed].sort(),
+    suppression_reasons: suppressionReasons,
     mode: cp.mode,
   };
 }
@@ -237,7 +244,7 @@ function _generateCliSurface(constitution: Constitution): CliSurface {
 function _generateHttpSurface(constitution: Constitution): HttpSurface {
   const ap = constitution.api_permissions;
   if (ap === null) {
-    return { patterns_delivered: [], patterns_suppressed: [], mode: "strict" };
+    return { patterns_delivered: [], patterns_suppressed: [], suppression_reasons: {}, mode: "strict" };
   }
 
   const escalationVisibility =
@@ -245,24 +252,29 @@ function _generateHttpSurface(constitution: Constitution): HttpSurface {
 
   const delivered: string[] = [];
   const suppressed: string[] = [];
+  const suppressionReasons: Record<string, string> = {};
 
   for (const ep of ap.endpoints) {
+    const pattern = ep.url_pattern;
     if (ep.authority === "cannot_execute") {
-      suppressed.push(ep.url_pattern);
+      suppressed.push(pattern);
+      suppressionReasons[pattern] = SUPPRESSION_REASON_CANNOT_EXECUTE;
     } else if (ep.authority === "must_escalate") {
       if (escalationVisibility === "suppressed") {
-        suppressed.push(ep.url_pattern);
+        suppressed.push(pattern);
+        suppressionReasons[pattern] = SUPPRESSION_REASON_ESCALATION_SUPPRESSED;
       } else {
-        delivered.push(ep.url_pattern);
+        delivered.push(pattern);
       }
     } else {
-      delivered.push(ep.url_pattern);
+      delivered.push(pattern);
     }
   }
 
   return {
     patterns_delivered: [...delivered].sort(),
     patterns_suppressed: [...suppressed].sort(),
+    suppression_reasons: suppressionReasons,
     mode: ap.mode,
   };
 }
