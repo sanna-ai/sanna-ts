@@ -1,3 +1,34 @@
+## [Unreleased] -- 2026-05-01 (SAN-370 Prompt C)
+
+### Changed
+- **Package versions:** all 4 packages (cli, core, gateway, mcp-server) bumped 1.4.0 -> 1.5.0 (v1.5 SHIPPED moment for TS SDK runtime).
+- `packages/core/src/receipt.ts`: SPEC_VERSION 1.4 -> 1.5; CHECKS_VERSION 9 -> 10; TOOL_VERSION 1.4.0 -> 1.5.0.
+- `packages/core/src/types.ts`: added `agent_identity?: Record<string, unknown>` field to Receipt interface (spec Section 2.19; AARM R6 binding).
+- `packages/core/src/receipt.ts` generateReceipt: accepts `agent_identity` param with cv-dispatch. When provided (and has `agent_session_id`), emits cv=10 with 21-field fingerprint formula adding `agent_identity_hash` at field 21 = `hashObj(agent_identity)`. When absent (library middleware path), emits cv=9 legacy with 20-field formula and hardcoded "1.4"/"9" overrides for byte-equal compatibility with archive fixtures.
+- `packages/core/src/receipt.ts` computeFingerprintInput: cv>=10 branch added (21-field formula).
+- `packages/core/src/verifier.ts`: cv>=10 required-field check (agent_identity + agent_session_id sub-field). Mirrors Python verify.py post-Prompt-B + SAN-385.
+- `packages/gateway/src/gateway.ts`: added `MCPGateway._agentSessionId` (crypto.randomUUID() at constructor; stable for instance lifetime). 3 generateReceipt callers pass `agent_identity: { agent_session_id: this._agentSessionId }` -> cv=10.
+- `packages/core/src/interceptors/child-process-interceptor.ts`: lazy-init module-level `_agentSessionId` on first emitReceipt; passed to generateReceipt -> cv=10.
+- `packages/core/src/interceptors/fetch-interceptor.ts`: lazy-init module-level `_agentSessionId` on first emit; passed to both generateReceipt callers (invocation + session_manifest) -> cv=10.
+- `spec/` submodule: bumped from 03160f1 (post-SAN-378 Prompt A) to 9ee7527 (post-SAN-370 Prompt A; v1.5 protocol artifact).
+- Tests: SDK constant assertions flipped to "1.5" / "10" / "1.5.0"; receipt-field assertions case-by-case per emission path; new `packages/core/tests/v15-integrity.test.ts` covers cv=10 emission + verifier required-field check + wire-format parity (agent_identity absent for cv=9, present for cv=10); cross-language.test.ts updated for cv=10 fixtures + getVerifyKey helper for sanna-protocol keypair rotation handling.
+
+### Per-emission-site cv discipline (SAN-370 Issue Y)
+- gateway / cli_interceptor (child-process) / http_interceptor (fetch) surfaces emit cv=10 with populated agent_identity.
+- middleware surface (sannaObserve / library middleware path) emits cv=9 legacy with no agent_identity, per spec Section 2.19 line 781-782.
+
+### Compatibility
+- **Cross-SDK byte-equal restored:** Python (post-SAN-385) and TypeScript (post-SAN-370 Prompt C) emit identical wire format for cv=9 receipts (`agent_identity` absent) and cv=10 receipts (`agent_identity` dict with `agent_session_id`). cross-language.test.ts validates byte-equal fingerprint computation.
+- **Receipt fingerprint compatibility:** existing signed cv=9 receipts continue to verify via the 20-field formula; verifier dispatches on `checks_version`. Re-emission post-upgrade from gateway/interceptor produces cv=10 with field 21; library middleware re-emission preserves cv=9 byte-equal output.
+- **Wire format alignment:** TS naturally omits undefined optional fields via JSON.stringify; cv=9 emissions have no `agent_identity` key (parity with Python post-SAN-385).
+- **Release coordination (SAN-386):** v1.5 SDK lockstep deployment + customer notification required BEFORE any production deploy of cv=10 emission. Merging this PR ships v1.5 to main; npm publish + customer SDK upgrade is gated by SAN-386.
+
+### Tickets
+- SAN-370 Prompt C (this entry) -- closes SAN-370
+- Predecessors: SAN-370 Prompt A (sanna-protocol 9ee7527), Prompt B (sanna-repo a0ee706), SAN-385 (sanna-repo 36832e3)
+- Forward-pointers: SAN-383 (cv<10 negative schema rule, Backlog), SAN-384 (content_mode agent_identity redaction, Backlog), SAN-386 (release coordination, Up Next), SAN-387 (typed AgentIdentityBinding interface, Backlog), SAN-388 (cross-language test archive coverage, Backlog)
+- Out-of-scope: SAN-368, SAN-369, SAN-371
+
 ## [Unreleased] -- 2026-04-30 (SAN-378 Prompt C)
 
 ### Changed

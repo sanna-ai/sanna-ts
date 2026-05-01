@@ -284,6 +284,9 @@ export interface Receipt {
   agent_model_provider?: string | null;
   /** LLM model version string, e.g. "20250514". Null = opt-out; absent = not captured. */
   agent_model_version?: string | null;
+  /** Agent identity binding for AARM R6 conformance. Required at cv>=10
+   *  (v1.5+); MUST be absent at cv<=9. See spec Section 2.19. SAN-370. */
+  agent_identity?: Record<string, unknown>;
   parent_receipts?: string[] | null;
   workflow_id?: string | null;
   content_mode?: ContentMode;

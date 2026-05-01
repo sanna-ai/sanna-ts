@@ -50,6 +50,8 @@ const _state: InterceptorState = {
   inIntercept: false,
 };
 
+let _agentSessionId: string | null = null;
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — import.meta.url is ESM-only; CJS build uses __filename fallback
 const _require = createRequire(typeof import.meta?.url === "string" ? import.meta.url : __filename);
@@ -177,6 +179,9 @@ function emitReceipt(params: {
   const enforcementAction = ENFORCEMENT_ACTION_MAP[params.decision] ?? "allowed";
 
   const opts = _state.options!;
+  if (_agentSessionId === null) {
+    _agentSessionId = randomUUID();
+  }
   const receipt = generateReceipt({
     correlation_id: randomUUID(),
     inputs: { binary: params.binary, argv: params.argv, agent_id: opts.agentId },
@@ -200,6 +205,7 @@ function emitReceipt(params: {
     content_mode: opts.contentMode ?? null,
     workflow_id: opts.workflowId ?? null,
     parent_receipts: opts.parentFingerprint ? [opts.parentFingerprint] : null,
+    agent_identity: { agent_session_id: _agentSessionId },
   });
 
   _state.sink!.store(receipt).catch(() => {});

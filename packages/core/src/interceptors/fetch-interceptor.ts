@@ -52,6 +52,8 @@ const _state: HttpInterceptorState = {
   inIntercept: false,
 };
 
+let _agentSessionId: string | null = null;
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — import.meta.url is ESM-only; CJS build uses __filename fallback
 const _require = createRequire(typeof import.meta?.url === "string" ? import.meta.url : __filename);
@@ -296,6 +298,9 @@ async function emitHttpReceipt(params: {
   const enforcementAction = ENFORCEMENT_ACTION_MAP[params.decision] ?? "allowed";
 
   const opts = _state.options!;
+  if (_agentSessionId === null) {
+    _agentSessionId = randomUUID();
+  }
   const receipt = generateReceipt({
     correlation_id: randomUUID(),
     inputs: { method: params.method, url: params.url, agent_id: opts.agentId },
@@ -319,6 +324,7 @@ async function emitHttpReceipt(params: {
     content_mode: opts.contentMode ?? null,
     workflow_id: opts.workflowId ?? null,
     parent_receipts: opts.parentFingerprint ? [opts.parentFingerprint] : null,
+    agent_identity: { agent_session_id: _agentSessionId },
   });
 
   await _state.sink!.store(receipt).catch(() => {});
@@ -670,6 +676,9 @@ function _emitHttpSessionManifest(): void {
 
   const correlationId = `manifest-http-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
+  if (_agentSessionId === null) {
+    _agentSessionId = randomUUID();
+  }
   const receipt = generateReceipt({
     correlation_id: correlationId,
     inputs: { query: "session_manifest" },
@@ -682,6 +691,7 @@ function _emitHttpSessionManifest(): void {
     extensions: { "com.sanna.manifest": manifestExt },
     content_mode: contentMode ?? null,
     content_mode_source: contentMode ? "local_config" : null,
+    agent_identity: { agent_session_id: _agentSessionId },
   }) as Record<string, unknown>;
 
   let finalReceipt: Record<string, unknown> = receipt;

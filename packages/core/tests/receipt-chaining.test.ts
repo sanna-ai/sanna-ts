@@ -176,22 +176,22 @@ describe("parent_receipts order matters for fingerprint", () => {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-describe("SPEC_VERSION is 1.4", () => {
-  it("equals '1.4'", () => {
-    expect(SPEC_VERSION).toBe("1.4");
+describe("SPEC_VERSION is 1.5", () => {
+  it("equals '1.5'", () => {
+    expect(SPEC_VERSION).toBe("1.5");
   });
 });
 
-describe("CHECKS_VERSION is 9", () => {
-  it("equals '9'", () => {
-    expect(CHECKS_VERSION).toBe("9");
+describe("CHECKS_VERSION is 10", () => {
+  it("equals '10'", () => {
+    expect(CHECKS_VERSION).toBe("10");
   });
 });
 
-describe("tool_version defaults to 1.4.0", () => {
+describe("tool_version defaults to 1.5.0", () => {
   it("uses default tool_version when none provided", () => {
     const receipt = generateReceipt({ ...baseParams() });
-    expect(receipt.tool_version).toBe("1.4.0");
+    expect(receipt.tool_version).toBe("1.5.0");
   });
 });
 

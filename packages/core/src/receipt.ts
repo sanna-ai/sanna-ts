@@ -14,9 +14,9 @@ import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./type
 
 // ── Constants ────────────────────────────────────────────────────────
 
-export const SPEC_VERSION = "1.4";
-export const CHECKS_VERSION = "9"; // SAN-222 v1.4: tool_name + agent_model fields (positions 17-20)
-export const TOOL_VERSION = "1.4.0"; // v1.4: bare semver (was "sanna-ts/1.3.0")
+export const SPEC_VERSION = "1.5";
+export const CHECKS_VERSION = "10"; // SAN-370 v1.5: agent_identity_hash at field 21
+export const TOOL_VERSION = "1.5.0"; // SAN-370 v1.5 SHIPPED
 export const TOOL_NAME = "sanna-ts"; // v1.4: canonical SDK identity per spec §2.17
 
 // ── Fingerprint computation ──────────────────────────────────────────
@@ -117,10 +117,43 @@ export function computeFingerprintInput(receipt: Record<string, unknown>): strin
   const workflowId = receipt.workflow_id as string | null | undefined;
   const workflowIdHash = workflowId != null ? hashContent(workflowId, 64) : EMPTY_HASH;
 
-  // 20-field fingerprint for checks_version >= 9 (v1.4, SAN-222)
-  // Fields 17-20: tool_name, agent_model, agent_model_provider, agent_model_version hashes
+  // Fingerprint dispatch: most-specific branch first
   const cv = parseInt(checksVersion, 10);
 
+  // 21-field fingerprint for checks_version >= 10 (v1.5, SAN-370)
+  // Field 21: agent_identity_hash = hashObj(agent_identity)
+  if (!isNaN(cv) && cv >= 10) {
+    const toolName = (receipt.tool_name as string) ?? "";
+    if (!toolName) return ""; // mirror Python: missing tool_name -> empty fingerprint
+    const toolNameHash = hashContent(toolName, 64);
+    const agentModel = receipt.agent_model as string | null | undefined;
+    const agentModelHash = agentModel ? hashContent(agentModel, 64) : EMPTY_HASH;
+    const agentModelProvider = receipt.agent_model_provider as string | null | undefined;
+    const agentModelProviderHash = agentModelProvider ? hashContent(agentModelProvider, 64) : EMPTY_HASH;
+    const agentModelVersion = receipt.agent_model_version as string | null | undefined;
+    const agentModelVersionHash = agentModelVersion ? hashContent(agentModelVersion, 64) : EMPTY_HASH;
+    const enforcementSurface = (receipt.enforcement_surface as string) ?? "";
+    const invariantsScope = (receipt.invariants_scope as string) ?? "";
+    if (!enforcementSurface || !invariantsScope) return "";
+    const enforcementSurfaceHash = hashContent(enforcementSurface, 64);
+    const invariantsScopeHash = hashContent(invariantsScope, 64);
+    const agentIdentity = receipt.agent_identity as Record<string, unknown> | undefined;
+    if (!agentIdentity) return ""; // cv=10 requires agent_identity
+    const agentIdentityHash = hashObj(agentIdentity);
+    return [
+      correlationId, contextHash, outputHash, checksVersion,
+      checksHash, constitutionHash, enforcementHash, coverageHash,
+      authorityHash, escalationHash, trustHash, extensionsHash,
+      parentReceiptsHash, workflowIdHash,
+      enforcementSurfaceHash, invariantsScopeHash,
+      toolNameHash, agentModelHash,
+      agentModelProviderHash, agentModelVersionHash,
+      agentIdentityHash,
+    ].join("|");
+  }
+
+  // 20-field fingerprint for checks_version >= 9 (v1.4, SAN-222)
+  // Fields 17-20: tool_name, agent_model, agent_model_provider, agent_model_version hashes
   if (!isNaN(cv) && cv >= 9) {
     const toolName = (receipt.tool_name as string) ?? "";
     const toolNameHash = toolName ? hashContent(toolName, 64) : EMPTY_HASH;
@@ -348,6 +381,7 @@ export interface ReceiptParams {
   agent_model?: string | null;
   agent_model_provider?: string | null;
   agent_model_version?: string | null;
+  agent_identity?: Record<string, unknown>;
 }
 
 /**
@@ -402,10 +436,25 @@ export function generateReceipt(params: ReceiptParams): Receipt {
     }
   }
 
+  // SAN-370: cv-dispatch on agent_identity presence (Issue Y design lock)
+  let _cv_emit: string;
+  let _sv_emit: string;
+  if (params.agent_identity != null) {  // != covers both null and undefined; mirrors Python `is not None`
+    if (!params.agent_identity.agent_session_id || typeof params.agent_identity.agent_session_id !== "string") {
+      throw new Error("agent_identity must include agent_session_id at cv=10 (spec Section 2.19)");
+    }
+    _cv_emit = "10";
+    _sv_emit = "1.5";
+  } else {
+    // Legacy library middleware path: emit cv=9 receipt (spec Section 2.19 line 781-782)
+    _cv_emit = "9";
+    _sv_emit = "1.4";
+  }
+
   const receiptBase: Record<string, unknown> = {
-    spec_version: SPEC_VERSION,
+    spec_version: _sv_emit,
     tool_version: params.tool_version ?? TOOL_VERSION,
-    checks_version: CHECKS_VERSION,
+    checks_version: _cv_emit,
     receipt_id: randomUUID(),
     correlation_id: params.correlation_id,
     timestamp: new Date().toISOString(),
@@ -443,6 +492,9 @@ export function generateReceipt(params: ReceiptParams): Receipt {
   if (params.agent_model !== undefined) receiptBase.agent_model = params.agent_model;
   if (params.agent_model_provider !== undefined) receiptBase.agent_model_provider = params.agent_model_provider;
   if (params.agent_model_version !== undefined) receiptBase.agent_model_version = params.agent_model_version;
+
+  // v1.5 field (participates in fingerprint at position 21; absent for cv=9)
+  if (_cv_emit === "10") receiptBase.agent_identity = params.agent_identity;
 
   // Metadata fields (do NOT participate in fingerprint)
   if (params.content_mode != null) receiptBase.content_mode = params.content_mode;

@@ -53,13 +53,24 @@ function checkSchema(receipt: Record<string, unknown>): string[] {
     if (!(field in receipt)) errors.push(`Missing required field: ${field}`);
   }
 
-  // v1.4+ minimum-required-fields assertion (SAN-222).
-  // When checks_version >= 9, tool_name is required.
+  // v1.5+ minimum-required-fields assertion (SAN-370).
+  // When checks_version >= 10, agent_identity + agent_session_id are required.
   // Error message text must match Python byte-for-byte for cross-SDK
   // debugging consistency.
   const cvStr = String(receipt.checks_version ?? "");
   const cvInt = parseInt(cvStr, 10);
 
+  if (!isNaN(cvInt) && cvInt >= 10) {
+    const agentIdentity = receipt.agent_identity as Record<string, unknown> | undefined;
+    if (!agentIdentity) {
+      errors.push("v1.5+ receipt (checks_version >= 10) is missing required field: agent_identity");
+    } else if (!agentIdentity.agent_session_id) {
+      errors.push("v1.5+ receipt agent_identity missing required sub-field: agent_session_id");
+    }
+  }
+
+  // v1.4+ minimum-required-fields assertion (SAN-222).
+  // When checks_version >= 9, tool_name is required.
   if (!isNaN(cvInt) && cvInt >= 9) {
     if (!receipt.tool_name) {
       errors.push(

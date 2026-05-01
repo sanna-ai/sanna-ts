@@ -93,6 +93,7 @@ export class SannaGateway {
   private _piiPatterns: PiiPattern[] | undefined;
   private _contentMode: ContentMode = null;
   private _workflowId: string | null = null;
+  private _agentSessionId: string = "";
   private _escalationReceiptFingerprints = new Map<string, string>();
   private _manifestEmitted = false;
   private _manifestFullFingerprint: string | null = null;
@@ -173,6 +174,7 @@ export class SannaGateway {
 
     // 3c. Session workflow ID
     this._workflowId = `gw-${crypto.randomUUID()}`;
+    this._agentSessionId = crypto.randomUUID();
 
     // 4. Escalation store
     if (this._config.escalation) {
@@ -851,6 +853,7 @@ export class SannaGateway {
       content_mode_source: this._contentMode ? "local_config" : null,
       enforcementSurface: "gateway",
       invariantsScope: "full",
+      agent_identity: { agent_session_id: this._agentSessionId },
     });
 
     // Add triad
@@ -904,6 +907,7 @@ export class SannaGateway {
       invariantsScope: "none",
       extensions: { "com.sanna.manifest": manifestExt },
       event_type: "session_manifest",
+      agent_identity: { agent_session_id: this._agentSessionId },
     }) as Record<string, unknown>;
 
     // SAN-209 Issue 18: capture full_fingerprint BEFORE persistence so anomaly
@@ -949,6 +953,7 @@ export class SannaGateway {
           suppression_basis: "session_manifest",
         },
       },
+      agent_identity: { agent_session_id: this._agentSessionId },
     }) as Record<string, unknown>;
 
     if (this._contentMode) {
