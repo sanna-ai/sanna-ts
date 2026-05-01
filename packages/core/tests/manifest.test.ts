@@ -293,6 +293,7 @@ describe("SAN-203 manifest: CLI surface", () => {
     const c = bareConstitution({ cli_permissions: cli });
     const out = generateManifest(c);
     expect(out.surfaces.cli!.patterns_delivered).toContain("ls");
+    expect(out.surfaces.cli!.suppression_reasons).toEqual({});
   });
 
   it("cannot_execute command appears in patterns_suppressed", () => {
@@ -301,6 +302,7 @@ describe("SAN-203 manifest: CLI surface", () => {
     const out = generateManifest(c);
     expect(out.surfaces.cli!.patterns_suppressed).toContain("rm");
     expect(out.surfaces.cli!.patterns_delivered).not.toContain("rm");
+    expect(out.surfaces.cli!.suppression_reasons["rm"]).toBe("cannot_execute");
   });
 
   it("must_escalate with visible delivers the command", () => {
@@ -308,6 +310,7 @@ describe("SAN-203 manifest: CLI surface", () => {
     const c = bareConstitution({ cli_permissions: cli, escalation_visibility: "visible" });
     const out = generateManifest(c);
     expect(out.surfaces.cli!.patterns_delivered).toContain("sudo");
+    expect(out.surfaces.cli!.suppression_reasons).toEqual({});
   });
 
   it("must_escalate with suppressed hides the command", () => {
@@ -316,6 +319,7 @@ describe("SAN-203 manifest: CLI surface", () => {
     const out = generateManifest(c);
     expect(out.surfaces.cli!.patterns_suppressed).toContain("sudo");
     expect(out.surfaces.cli!.patterns_delivered).not.toContain("sudo");
+    expect(out.surfaces.cli!.suppression_reasons["sudo"]).toBe("escalation_suppressed");
   });
 
   it("mode is passed through to cli surface", () => {
@@ -346,6 +350,7 @@ describe("SAN-203 manifest: HTTP surface", () => {
     const c = bareConstitution({ api_permissions: api });
     const out = generateManifest(c);
     expect(out.surfaces.http!.patterns_delivered).toContain("/api/read");
+    expect(out.surfaces.http!.suppression_reasons).toEqual({});
   });
 
   it("cannot_execute endpoint appears in patterns_suppressed", () => {
@@ -354,6 +359,7 @@ describe("SAN-203 manifest: HTTP surface", () => {
     const out = generateManifest(c);
     expect(out.surfaces.http!.patterns_suppressed).toContain("/admin/*");
     expect(out.surfaces.http!.patterns_delivered).not.toContain("/admin/*");
+    expect(out.surfaces.http!.suppression_reasons["/admin/*"]).toBe("cannot_execute");
   });
 
   it("must_escalate with visible delivers the endpoint", () => {
@@ -361,6 +367,7 @@ describe("SAN-203 manifest: HTTP surface", () => {
     const c = bareConstitution({ api_permissions: api, escalation_visibility: "visible" });
     const out = generateManifest(c);
     expect(out.surfaces.http!.patterns_delivered).toContain("/api/delete");
+    expect(out.surfaces.http!.suppression_reasons).toEqual({});
   });
 
   it("must_escalate with suppressed hides the endpoint", () => {
@@ -369,6 +376,7 @@ describe("SAN-203 manifest: HTTP surface", () => {
     const out = generateManifest(c);
     expect(out.surfaces.http!.patterns_suppressed).toContain("/api/delete");
     expect(out.surfaces.http!.patterns_delivered).not.toContain("/api/delete");
+    expect(out.surfaces.http!.suppression_reasons["/api/delete"]).toBe("escalation_suppressed");
   });
 
   it("mode is passed through to http surface", () => {

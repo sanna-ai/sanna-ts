@@ -1,3 +1,19 @@
+## [Unreleased] -- 2026-04-30 (SAN-378 Prompt C)
+
+### Changed
+- packages/core/src/manifest.ts: _generateCliSurface and _generateHttpSurface now emit suppression_reasons: Record<string, string> per v1.5 spec Section 2.20.2. Empty dict {} when no suppressions; populated when the constitution declares cannot_execute or must_escalate-with-visibility-suppressed. Mirrors Python SAN-378 Prompt B (sanna-repo e8fb027) and the mcp surfaces existing suppression_reasons algorithm. Cross-SDK byte-equal output preserved.
+- packages/core/src/manifest.ts: CliSurface and HttpSurface interfaces updated to include suppression_reasons field.
+- spec/ submodule pin bumped from sanna-protocol f89c8c9 to 03160f1 (SAN-378 Prompt A merge: MC-006 + MC-007 fixture vectors updated to include suppression_reasons).
+- packages/core/tests/manifest.test.ts: Existing TS manifest tests updated with suppression_reasons assertions for cli/http surface output (8 assertions added across 4 CLI + 4 HTTP tests -- Issue 14-equivalent for SAN-378).
+
+### Compatibility
+- **Receipt fingerprint compatibility:** post-SAN-378 receipts include suppression_reasons in cli/http surfaces (per v1.5 Section 2.20.2). This changes the canonical JSON shape and therefore the receipt fingerprint when cli/http surfaces have suppressed entries. Existing signed receipts remain valid (signature is over what was emitted). Re-emission of the same input post-upgrade produces a different fingerprint than pre-upgrade. Verifiers should accept receipts as-emitted; cross-version fingerprint replay is not a conformance test.
+- **Cross-SDK lockstep restored:** with this PRs merge, sanna-ts and sanna-repo both emit cli/http surfaces with suppression_reasons. The bounded divergence window (between SAN-378 Prompt B merge and this merge) closes.
+
+### Tickets
+- SAN-378 Prompt C (this entry)
+- Companion: SAN-378 Prompt A (sanna-protocol fixture update, MERGED at 03160f1), SAN-378 Prompt B (sanna-repo Python implementation, MERGED at e8fb027). SAN-376 (cross-SDK fixture origin), SAN-203 (TS manifest origin, will be annotated post-done on full SAN-378 close), SAN-377 (spec clarification, MERGED), SAN-382 (R1 schema-rule enforcement gap, deferred Backlog).
+
 ## [Unreleased] -- 2026-04-30 (SAN-209)
 
 ### Added
