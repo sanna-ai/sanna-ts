@@ -1,3 +1,19 @@
+## [Unreleased] -- 2026-05-01 (SAN-371)
+
+### Added
+- **TypeScript verifier emits CV9_LEGACY-prefixed warning on cv=9 receipts.** When `verifyReceipt(...)` processes a receipt with `checks_version=9`, the warnings array now includes a string starting with `CV9_LEGACY:` indicating partial R6 conformance only (agent_identity is absent at cv<10 per spec Section 2.19). Receipt remains valid; the warning is informational. Cross-SDK parity: warning text is byte-equal to the Python sanna verifier emission.
+- New test coverage in `packages/core/tests/cv9-legacy-warning.test.ts` validating: cv=9 receipts emit exactly one CV9_LEGACY warning; cv=10 receipts emit no CV9_LEGACY warning; archive cv=9 fixtures emit the warning.
+
+### Compatibility
+- **No-action-required for existing signed cv=9 receipts.** Pre-v1.5 receipts remain cryptographically valid; their 20-field fingerprints continue to verify. Verification output now includes the CV9_LEGACY informational warning.
+- **Cross-SDK warning-text byte-equal:** matches Python sanna verifier emission exactly. Audit consumers can pattern-match on the `CV9_LEGACY:` prefix regardless of which SDK verified the receipt.
+
+### Tickets
+- SAN-371 (this entry; sanna-ts TypeScript portion -- closes SAN-371)
+- Predecessors:
+  - SAN-371 sanna-protocol portion (migration memo, MERGED at sanna-protocol a684a33)
+  - SAN-371 sanna-repo portion (Python verifier CV9_LEGACY emission, MERGED at sanna-repo ed5ae77)
+
 ## [Unreleased] -- 2026-05-01 (SAN-389)
 
 ### Fixed
