@@ -530,7 +530,7 @@ describe("CloudHTTPSink", () => {
     await sink.store(makeReceipt());
 
     const callArgs = fetchMock.mock.calls[0][1];
-    expect(callArgs.headers["User-Agent"]).toBe("sanna-ts/1.4");
+    expect(callArgs.headers["User-Agent"]).toBe("sanna-ts/1.5");
   });
 
   // ── 19. Authorization header is Bearer token ──────────────────

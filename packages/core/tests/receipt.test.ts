@@ -11,7 +11,7 @@ import {
   TOOL_VERSION,
   TOOL_NAME,
 } from "../src/receipt.js";
-import { loadPrivateKey, loadPublicKey } from "../src/crypto.js";
+import { loadPrivateKey, loadPublicKey, getKeyId } from "../src/crypto.js";
 import { verify } from "../src/crypto.js";
 import { canonicalize, hashContent } from "../src/hashing.js";
 
@@ -36,6 +36,9 @@ describe("generateReceipt", () => {
         evidence: null,
       },
     ],
+    enforcementSurface: "gateway",
+    invariantsScope: "full",
+    agent_identity: { agent_session_id: "receipt-test-001-session" },
   });
 
   it("has correct spec_version", () => {
@@ -140,7 +143,7 @@ describe("signReceipt", () => {
     const sig = receipt.receipt_signature as Record<string, unknown>;
     expect(sig).toBeDefined();
     expect(sig.signature).toBeTruthy();
-    expect(sig.key_id).toBe(golden.test_key_id);
+    expect(sig.key_id).toBe(getKeyId(privKey));
     expect(sig.scheme).toBe("receipt_sig_v1");
     expect(sig.signed_by).toBe("test@sanna.dev");
   });
@@ -504,11 +507,11 @@ describe("v1.3 enforcement override (SAN-213 AC 8)", () => {
 
 // ── v1.4 tests (SAN-222) ─────────────────────────────────────────────
 
-describe("v1.4 version constants (SAN-222)", () => {
-  it("v1.4 version constants", () => {
-    expect(SPEC_VERSION).toBe("1.4");
-    expect(CHECKS_VERSION).toBe("9");
-    expect(TOOL_VERSION).toBe("1.4.0");
+describe("v1.5 version constants (SAN-370)", () => {
+  it("v1.5 version constants", () => {
+    expect(SPEC_VERSION).toBe("1.5");
+    expect(CHECKS_VERSION).toBe("10");
+    expect(TOOL_VERSION).toBe("1.5.0");
     expect(TOOL_NAME).toBe("sanna-ts");
   });
 });

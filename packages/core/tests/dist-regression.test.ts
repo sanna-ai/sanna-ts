@@ -20,11 +20,11 @@ import {
 } from "@sanna-ai/core";
 
 describe("dist regression (SAN-220)", () => {
-  it("dist exports v1.4 constants", () => {
-    expect(SPEC_VERSION).toBe("1.4");
-    expect(CHECKS_VERSION).toBe("9");
+  it("dist exports v1.5 constants", () => {
+    expect(SPEC_VERSION).toBe("1.5");
+    expect(CHECKS_VERSION).toBe("10");
     expect(TOOL_NAME).toBe("sanna-ts");
-    expect(TOOL_VERSION).toBe("1.4.0");
+    expect(TOOL_VERSION).toBe("1.5.0");
     expect(TOOL_VERSION).not.toMatch(/sanna-ts\//); // must be bare semver
   });
 

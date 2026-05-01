@@ -560,7 +560,7 @@ describe("patchChildProcess — receipt fields", () => {
     expect(invocationReceipts(sink).length).toBe(1);
     const receipt = firstInvocationReceipt(sink);
     expect(receipt.receipt_id).toBeTruthy();
-    expect(receipt.spec_version).toBe("1.4");
+    expect(receipt.spec_version).toBe("1.5");
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
   });
@@ -865,12 +865,12 @@ describe("Cross-surface — receipt integrity", () => {
     const receipt = firstInvocationReceipt(sink);
     expect(receipt.receipt_fingerprint).toHaveLength(16);
     expect(receipt.full_fingerprint).toHaveLength(64);
-    expect(receipt.checks_version).toBe("9");
+    expect(receipt.checks_version).toBe("10");
 
     // Verify fingerprint can be recomputed
     const fpInput = computeFingerprintInput(receipt as unknown as Record<string, unknown>);
     const parts = fpInput.split("|");
-    expect(parts.length).toBe(20);
+    expect(parts.length).toBe(21);
 
     // Recompute and verify match
     const { receipt_fingerprint, full_fingerprint } = computeFingerprints(
