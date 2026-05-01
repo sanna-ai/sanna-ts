@@ -1,3 +1,22 @@
+## [Unreleased] -- 2026-05-01 (SAN-389)
+
+### Fixed
+- **Restored strict cross-SDK signature verification.** The cross-language test (`packages/core/tests/cross-language.test.ts`) added a `getVerifyKey()` helper that skipped Ed25519 signature verification when a fixture's `receipt_signature.key_id` did not match the bundled `test-author.pub`. The helper masked an upstream sanna-protocol artifact divergence (cv=10 fixtures signed with a key not in the spec submodule). With sanna-protocol now bundling a self-consistent keypair (commit e58ed3e), the workaround is no longer needed; strict signature verification works for cv=9 archive AND cv=10 active fixtures.
+
+### Changed
+- **Bumped `spec/` submodule pin** from 9ee7527 to e58ed3e (sanna-protocol main HEAD post-artifact-self-consistency fix).
+- Removed `getVerifyKey()` helper from cross-language.test.ts; all callsites now use the top-loaded `pubKey` directly.
+
+### Compatibility
+- **Cross-SDK byte-equal contract intact:** cv=10 fingerprints byte-equal across the sanna-protocol keypair rotation (formula uses pipe-joined receipt fields, not signing key). cross-language.test.ts validates this via fingerprint comparison.
+- **Receipt signature compatibility:** post-bump, the bundled `spec/fixtures/keypairs/test-author.pub` matches the cv=10 fixture signatures (test_key_id = 6edb993...). Strict signature verification works in both directions.
+
+### Tickets
+- SAN-389 (this entry; sanna-protocol portion merged at e58ed3e)
+- Cross-SDK contract: SAN-355
+- Unblocks: SAN-386 (v1.5 release coordination)
+- Forward-pointer: SAN-391 (make generate_fixtures.py deterministic; idempotent keypair + frozen reference timestamps)
+
 ## [Unreleased] -- 2026-05-01 (SAN-370 Prompt C)
 
 ### Changed

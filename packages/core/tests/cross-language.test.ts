@@ -16,6 +16,10 @@
  *   tool_name_hash | agent_model_hash | agent_model_provider_hash |
  *   agent_model_version_hash | agent_identity_hash
  *
+ * All fixtures (v1.5 active and cv=9 archive) are signed with the bundled
+ * test-author.pub key (sanna-protocol post-SAN-389, commit e58ed3e).
+ * Strict Ed25519 signature verification applies to all fixtures.
+ *
  * v1.4 archive fixtures (spec/fixtures/receipts/archive/v1.4/) use the
  * 20-field formula (checks_version "9"). Archive coverage: SAN-388 (Backlog).
  */
@@ -23,10 +27,9 @@
 import { describe, it, expect } from "vitest";
 import { resolve } from "node:path";
 import { readFileSync, readdirSync } from "node:fs";
-import type { KeyObject } from "node:crypto";
 import { verifyReceipt } from "../src/verifier.js";
 import { computeFingerprints, generateReceipt } from "../src/receipt.js";
-import { loadPublicKey, getKeyId } from "../src/crypto.js";
+import { loadPublicKey } from "../src/crypto.js";
 import { hashObj } from "../src/hashing.js";
 
 const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
@@ -34,7 +37,6 @@ const golden = JSON.parse(
   readFileSync(resolve(FIXTURES, "golden-hashes.json"), "utf-8"),
 );
 const pubKey = loadPublicKey(resolve(FIXTURES, "keypairs/test-author.pub"));
-const pubKeyId = getKeyId(pubKey);
 
 // Load all receipt fixtures
 const receiptDir = resolve(FIXTURES, "receipts");
@@ -45,49 +47,25 @@ for (const file of receiptFiles) {
   receipts[name] = JSON.parse(readFileSync(resolve(receiptDir, file), "utf-8"));
 }
 
-/**
- * Return the correct public key for a receipt, or undefined if the receipt
- * was signed with a different key than test-author.pub. When sanna-protocol
- * regenerates the test keypair (as it did for v1.5/9ee7527), the new fixtures
- * are signed with a fresh key. In that case, we can still verify fingerprints
- * and schema but must skip cryptographic signature verification.
- */
-function getVerifyKey(receipt: Record<string, unknown>): KeyObject | undefined {
-  const sig = receipt.receipt_signature as Record<string, unknown> | undefined;
-  if (!sig) return undefined;
-  return sig.key_id === pubKeyId ? pubKey : undefined;
-}
-
 // ── Cross-language verification ──────────────────────────────────────
 
 describe("CRITICAL: cross-language receipt verification", () => {
   for (const [name, receipt] of Object.entries(receipts)) {
     describe(`receipt: ${name}`, () => {
-      it("passes verification with TypeScript verifier (schema + fingerprint + signature when key available)", () => {
-        const key = getVerifyKey(receipt);
-        const result = verifyReceipt(receipt, key);
-        const nonSigErrors = key
-          ? result.errors
-          : result.errors.filter((e) => !e.toLowerCase().includes("signature") && !e.toLowerCase().includes("key_id"));
-        if (nonSigErrors.length > 0) {
-          console.error(`VERIFICATION FAILED for ${name}:`, nonSigErrors);
+      it("passes verification with TypeScript verifier (schema + fingerprint + signature)", () => {
+        const result = verifyReceipt(receipt, pubKey);
+        if (result.errors.length > 0) {
+          console.error(`VERIFICATION FAILED for ${name}:`, result.errors);
         }
-        expect(nonSigErrors).toEqual([]);
+        expect(result.errors).toEqual([]);
       });
 
-      it("signature structure present (Python-signed, TypeScript-verified when key matches)", () => {
-        const key = getVerifyKey(receipt);
-        const result = verifyReceipt(receipt, key);
-        if (key) {
-          expect(result.checks_performed).toContain("signature");
-          expect(
-            result.errors.filter((e) => e.toLowerCase().includes("signature")),
-          ).toEqual([]);
-        } else {
-          // Key mismatch: sanna-protocol regenerated keypair for v1.5 fixtures.
-          // Signature structure is present; cryptographic check skipped.
-          expect(receipt.receipt_signature).toBeTruthy();
-        }
+      it("signature structure present (Python-signed, TypeScript-verified)", () => {
+        const result = verifyReceipt(receipt, pubKey);
+        expect(result.checks_performed).toContain("signature");
+        expect(
+          result.errors.filter((e) => e.toLowerCase().includes("signature")),
+        ).toEqual([]);
       });
 
       it("fingerprint matches (Python-computed, TypeScript-recomputed)", () => {
@@ -285,21 +263,16 @@ describe("v1.3 cross-language parity (SAN-213 AC 13)", () => {
       const receipt = receipts[name];
 
       describe(`v1.3 fixture: ${name}`, () => {
-        it("passes verification with TypeScript verifier (non-signature checks)", () => {
-          const key = getVerifyKey(receipt);
-          const result = verifyReceipt(receipt, key);
-          const nonSigErrors = key
-            ? result.errors
-            : result.errors.filter((e) => !e.toLowerCase().includes("signature") && !e.toLowerCase().includes("key_id"));
-          if (nonSigErrors.length > 0) {
-            console.error(`V1.3 VERIFICATION FAILED for ${name}:`, nonSigErrors);
+        it("passes verification with TypeScript verifier (schema + fingerprint + signature)", () => {
+          const result = verifyReceipt(receipt, pubKey);
+          if (result.errors.length > 0) {
+            console.error(`V1.3 VERIFICATION FAILED for ${name}:`, result.errors);
           }
-          expect(nonSigErrors).toEqual([]);
+          expect(result.errors).toEqual([]);
         });
 
         it("checks_performed includes required check types", () => {
-          const key = getVerifyKey(receipt);
-          const result = verifyReceipt(receipt, key);
+          const result = verifyReceipt(receipt, pubKey);
           expect(result.checks_performed).toContain("schema");
           expect(result.checks_performed).toContain("fingerprint");
           expect(result.checks_performed).toContain("content_hashes");
@@ -393,16 +366,12 @@ describe("CRITICAL: v1.5 cross-language byte-parity (SAN-370)", () => {
       const receipt = receipts[name];
 
       describe(`v1.5 byte-parity: ${name}`, () => {
-        it("passes verification (schema + fingerprint + required fields)", () => {
-          const key = getVerifyKey(receipt);
-          const result = verifyReceipt(receipt, key);
-          const nonSigErrors = key
-            ? result.errors
-            : result.errors.filter((e) => !e.toLowerCase().includes("signature") && !e.toLowerCase().includes("key_id"));
-          if (nonSigErrors.length > 0) {
-            console.error(`V1.5 VERIFICATION FAILED for ${name}:`, nonSigErrors);
+        it("passes verification (schema + fingerprint + signature + required fields)", () => {
+          const result = verifyReceipt(receipt, pubKey);
+          if (result.errors.length > 0) {
+            console.error(`V1.5 VERIFICATION FAILED for ${name}:`, result.errors);
           }
-          expect(nonSigErrors).toEqual([]);
+          expect(result.errors).toEqual([]);
         });
 
         it("has tool_name field (v1.4+ required)", () => {
