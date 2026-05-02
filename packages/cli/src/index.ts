@@ -15,6 +15,7 @@ import { approveCommand } from "./commands/approve.js";
 import { bundleCreateCommand } from "./commands/bundle-create.js";
 import { bundleVerifyCommand } from "./commands/bundle-verify.js";
 import { generateCommand } from "./commands/generate.js";
+import { verifyAarmCommand } from "./commands/verify-aarm.js";
 
 const program = new Command();
 
@@ -39,5 +40,6 @@ program.addCommand(approveCommand);
 program.addCommand(bundleCreateCommand);
 program.addCommand(bundleVerifyCommand);
 program.addCommand(generateCommand);
+program.addCommand(verifyAarmCommand);
 
 program.parse();

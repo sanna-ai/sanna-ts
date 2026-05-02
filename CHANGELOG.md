@@ -1,3 +1,24 @@
+## [Unreleased] -- 2026-05-02 (SAN-368)
+
+### Added
+- **TypeScript parity for sanna-verify aarm.** New module `packages/core/src/aarm.ts` mirrors the Python implementation at sanna-repo f2b53a5. Same SANNA_TO_AARM decision-enum mapping, same six per-requirement check functions (R1 pre-execution interception, R2 parent_receipts chain, R3 constitution policy_hash, R4 decision-enum subset + STEP_UP chain check, R5 fingerprint + signature integrity with redacted-receipt acceptance, R6 cv-aware identity binding), aggregate report, JSON + human output formats.
+- `sanna-verify-aarm` CLI subcommand in the TS CLI package. Same flags + exit codes as Python (0 PASS/PARTIAL, 1 FAIL, 2 file errors, 3 internal errors).
+- Cross-SDK verdict parity test: TS aggregator produces verdict structure matching Python reference output for the same receipt set (AC #5 closed for the cross-language fixture parity contract).
+- New tests in `packages/core/tests/san368-aarm-verifier.test.ts` mirroring Python coverage: 42 tests covering per-check PASS/FAIL/PARTIAL/N/A, STEP_UP chain check, R6 dispatch, redacted-receipt R5 acceptance, fixture-set integration, and cross-SDK parity.
+
+### Compatibility
+- **Cross-SDK verdict byte-equal:** TS aggregator and Python aggregator produce identical aggregate_status + per-check status for identical receipt sets (modulo generated_at timestamp).
+
+### Out of scope
+- **Spec section "How to verify AARM conformance"** (AC #6). Lands in sanna-protocol SAN-368 portion.
+- **SARIF output format.** Marked optional; deferred.
+
+### Tickets
+- SAN-368 (this entry; sanna-ts TypeScript portion)
+- Predecessor: sanna-repo SAN-368 portion (Python implementation, MERGED at sanna-repo f2b53a5)
+- Companion: sanna-protocol SAN-368 portion (operational docs, separate Opus prompt)
+- Cross-references: SAN-356 G2, SAN-361, SAN-369, SAN-370, SAN-371
+
 ## [Unreleased] -- 2026-05-02 (SAN-369)
 
 ### Added

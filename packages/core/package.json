@@ -23,6 +23,10 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./aarm": {
+      "import": "./dist/aarm.js",
+      "require": "./dist/aarm.cjs"
     }
   },
   "main": "./dist/index.cjs",

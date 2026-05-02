@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/authority.ts"],
+  entry: ["src/index.ts", "src/authority.ts", "src/aarm.ts"],
   format: ["esm", "cjs"],
   // tsup's rollup.ts unconditionally injects `baseUrl: process.cwd()` into the
   // DTS pipeline (https://github.com/egoist/tsup/issues/1388). TS 6 promotes
