@@ -1,3 +1,20 @@
+## [Unreleased] -- 2026-05-02 (SAN-369)
+
+### Added
+- **MODIFY authority decision recording infrastructure (TypeScript).** `buildModifyAuthorityDecision(action, original, transformed, transformations, options?)` constructs an object matching `AuthorityDecisionRecord` with `decision=modify_with_constraints` and the three required MODIFY recording fields (`tool_input_original`, `tool_input_transformed`, `transformations_applied`) per spec Section 2.7. Validates at construction: transformations is a non-empty array of `{type, target_field, rationale}` objects; `original` and `transformed` are string or plain object (null and arrays rejected). Cross-SDK byte-equal parity with Python helper (`sanna-repo c2c6a39`): identical inputs produce identical record shape, key order, and value semantics. Records produced by the helper satisfy the A1' conditional rule in `receipt.schema.json`.
+- New test coverage in `packages/core/tests/san369-modify-recording.test.ts`: 9 tests covering valid construction, key-order parity with Python, construction-time errors for malformed inputs, deterministic byte-equality, and cross-SDK byte-equal shape parity against a hardcoded Python reference output.
+
+### Out of scope
+- **Constitution-rule-driven MODIFY emission.** Authority evaluation does NOT yet return `modify_with_constraints`. Rule engine is a separate ticket.
+- **Cross-SDK fixture file.** Lands in sanna-protocol SAN-369 portion (hand-constructed + signed with the committed e58ed3e keypair).
+- **Implementer's guide example.** Lands in sanna-protocol SAN-369 portion.
+
+### Tickets
+- SAN-369 (this entry; sanna-ts TypeScript portion)
+- Predecessor: sanna-repo SAN-369 portion (Python helper, MERGED at sanna-repo c2c6a39)
+- Companion: sanna-protocol SAN-369 portion (implementer's guide + cross-SDK fixture, separate PR)
+- Verifier rejection of MODIFY receipts missing the three fields: SAN-368
+
 ## [Unreleased] -- 2026-05-01 (SAN-371)
 
 ### Added
