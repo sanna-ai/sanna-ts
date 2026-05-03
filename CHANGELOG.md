@@ -1,3 +1,24 @@
+## [Unreleased] -- 2026-05-02 (SAN-359)
+
+### Fixed
+- Gateway ListToolsRequestSchema handler now returns empty tools when
+  `_emitSessionManifest` fails (generation or persistence). Previously
+  the gateway caught manifest failures silently and returned the full
+  filtered tool list -- a governance leak.
+- `_manifestFailed` state is sticky: once manifest fails, ALL subsequent
+  tools/list calls return empty for the gateway lifecycle.
+- Belt-and-suspenders: handler wraps `_emitSessionManifest` in try/catch
+  as catch-all for unexpected failures.
+
+### Security
+- Per PRD CT-7 (fail-closed): no tool-name data leaks to the agent on
+  manifest failure. Response is `{ tools: [] }`. Cross-SDK parity with
+  sanna-repo SAN-359 Prompt A (PR #47).
+
+### Tickets
+- SAN-359 Prompt B (this entry; TS half). Closes SAN-359.
+- Companion: SAN-359 Prompt A (Python, PR #47, merged).
+
 ## [Unreleased] -- 2026-05-02 (SAN-394)
 
 ### Fixed
