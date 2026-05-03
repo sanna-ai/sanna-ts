@@ -1,3 +1,32 @@
+## [Unreleased] -- 2026-05-02 (SAN-394)
+
+### Fixed
+- `checkSchema()` in verifier.ts now runs ajv-driven validation against the
+  bundled receipt.schema.json (draft-2020-12) as a second pass after the
+  existing hand-rolled required-field checks. Catches all conditional allOf
+  rules: B1 (session_manifest enforcement-absent), B2 (mixed requires multi-
+  surface), A1 (cv=10 agent_identity), A3 (com.sanna.manifest implies
+  session_manifest), B3 (com.sanna.anomaly implies anomaly event_type), B4
+  (anomaly requires com.sanna.anomaly), MODIFY (modify_with_constraints
+  requires recording fields), R1+R2 (content_mode redaction rules).
+- ajv validates ONLY the allOf conditional rules (not the full schema) to
+  avoid duplicating hand-rolled required-field checks with different messages.
+  allOf rules have no $ref/$defs dependencies and extract cleanly.
+- `ajv-formats` added to production dependencies (previously test-only
+  transitive).
+
+### Cross-SDK
+- Verdict-level parity restored: same schema-violating receipt now produces
+  errors in both Python (jsonschema) and TS (ajv) verifiers. Error message
+  TEXT differs between libraries (expected); error PRESENCE is parity-gated.
+- Existing byte-equal messages (SAN-370 cv=10, SAN-222 cv=9, SAN-213 cv=8)
+  preserved unchanged; ajv pass is additive, not a replacement.
+
+### Tickets
+- SAN-394 (this entry).
+- Adjacent: SAN-358 (semantic checks, already merged), SAN-395 (spec B3/B4,
+  already merged).
+
 ## [Unreleased] -- 2026-05-02 (SAN-358 Prompt B)
 
 ### Added
