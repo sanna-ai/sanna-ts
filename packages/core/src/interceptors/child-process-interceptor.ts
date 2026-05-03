@@ -64,6 +64,12 @@ const _require = createRequire(typeof import.meta?.url === "string" ? import.met
 
 const SHELL_OPERATORS = /[;|&`]|\$\(/;
 
+const MODE_TO_ENFORCEMENT_LEVEL: Record<string, string> = {
+  enforce: "halt",
+  audit: "warn",
+  passthrough: "log",
+};
+
 function parseBinary(command: string): { binary: string; argv: string[]; hasShellOperators: boolean } {
   const hasShellOperators = SHELL_OPERATORS.test(command);
 
@@ -195,7 +201,7 @@ function emitReceipt(params: {
       action: enforcementAction,
       reason: params.reason,
       failed_checks: [],
-      enforcement_mode: opts.mode ?? "enforce",
+      enforcement_mode: MODE_TO_ENFORCEMENT_LEVEL[opts.mode ?? "enforce"] ?? "halt",
       timestamp: new Date().toISOString(),
     },
     enforcementSurface: "cli_interceptor",
@@ -852,7 +858,7 @@ function _emitCliInvocationAnomaly(binary: string): void {
     enforcement: {
       action: "halted",
       reason: "command_suppressed_by_constitution",
-      enforcement_mode: opts.mode ?? "enforce",
+      enforcement_mode: MODE_TO_ENFORCEMENT_LEVEL[opts.mode ?? "enforce"] ?? "halt",
       failed_checks: [],
       timestamp: new Date().toISOString(),
     },

@@ -1,3 +1,14 @@
+## [Unreleased] -- 2026-05-03 (SAN-379)
+
+### Fixed
+- CLI + HTTP interceptors: enforcement.enforcement_mode now emits
+  schema-conformant values (halt/warn/log) instead of interceptor
+  mode values (enforce/audit/passthrough). Mapping: enforce->halt,
+  audit->warn, passthrough->log. Cross-SDK parity with sanna-repo PR #49.
+
+### Tickets
+- SAN-379 TS follow-up (this entry).
+
 ## [Unreleased] -- 2026-05-03 (SAN-397)
 
 ### Added

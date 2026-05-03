@@ -62,6 +62,12 @@ let _agentSessionId: string | null = null;
 // @ts-ignore — import.meta.url is ESM-only; CJS build uses __filename fallback
 const _require = createRequire(typeof import.meta?.url === "string" ? import.meta.url : __filename);
 
+const MODE_TO_ENFORCEMENT_LEVEL: Record<string, string> = {
+  enforce: "halt",
+  audit: "warn",
+  passthrough: "log",
+};
+
 // Default exclusions — always added, cannot be removed
 const DEFAULT_EXCLUDES = [
   "https://api.sanna.cloud/*",
@@ -314,7 +320,7 @@ async function emitHttpReceipt(params: {
       action: enforcementAction,
       reason: params.reason,
       failed_checks: [],
-      enforcement_mode: opts.mode ?? "enforce",
+      enforcement_mode: MODE_TO_ENFORCEMENT_LEVEL[opts.mode ?? "enforce"] ?? "halt",
       timestamp: new Date().toISOString(),
     },
     enforcementSurface: "http_interceptor",
@@ -745,7 +751,7 @@ function _emitHttpInvocationAnomaly(endpointPattern: string): void {
     enforcement: {
       action: "halted",
       reason: "endpoint_suppressed_by_constitution",
-      enforcement_mode: opts.mode ?? "enforce",
+      enforcement_mode: MODE_TO_ENFORCEMENT_LEVEL[opts.mode ?? "enforce"] ?? "halt",
       failed_checks: [],
       timestamp: new Date().toISOString(),
     },

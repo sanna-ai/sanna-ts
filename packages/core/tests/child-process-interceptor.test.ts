@@ -1335,3 +1335,55 @@ describe("SAN-397: CLI invocation_anomaly emission", () => {
     expect(halted).toBeDefined();
   });
 });
+
+// ── SAN-379: enforcement_mode schema conformance ──────────────────────
+
+describe("SAN-379: enforcement_mode schema conformance", () => {
+  it("enforce mode produces enforcement_mode='halt'", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+      mode: "enforce",
+    });
+
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+    const receipt = firstInvocationReceipt(sink);
+    expect((receipt as any).enforcement.enforcement_mode).toBe("halt");
+  });
+
+  it("audit mode produces enforcement_mode='warn'", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+      mode: "audit",
+    });
+
+    const cp = require_("node:child_process");
+    cp.execSync("echo audit", { encoding: "utf-8" });
+
+    const receipt = firstInvocationReceipt(sink);
+    expect((receipt as any).enforcement.enforcement_mode).toBe("warn");
+  });
+
+  it("passthrough mode produces enforcement_mode='log'", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+      mode: "passthrough",
+    });
+
+    const cp = require_("node:child_process");
+    cp.execSync("echo passthrough", { encoding: "utf-8" });
+
+    const receipt = firstInvocationReceipt(sink);
+    expect((receipt as any).enforcement.enforcement_mode).toBe("log");
+  });
+});
