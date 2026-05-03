@@ -23,6 +23,7 @@ import type {
   AgentIdentity,
   Invariant,
   AuthorityBoundaries,
+  AnomalyTracking,
   EscalationRule,
   EscalationTargetConfig,
   CliPermissions,
@@ -469,12 +470,19 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
       return { condition: String(rule.condition ?? ""), target };
     });
 
+    const anomalyTrackingData = abData.anomaly_tracking as Record<string, unknown> | undefined;
+    const anomalyTracking: AnomalyTracking = {
+      cli: Boolean(anomalyTrackingData?.cli ?? false),
+      http: Boolean(anomalyTrackingData?.http ?? false),
+    };
+
     authorityBoundaries = {
       cannot_execute: (abData.cannot_execute as string[]) ?? [],
       must_escalate: mustEscalate,
       can_execute: (abData.can_execute as string[]) ?? [],
       default_escalation: defaultEscalation,
       escalation_visibility: (abData.escalation_visibility as "visible" | "suppressed" | undefined) ?? "visible",
+      anomaly_tracking: anomalyTracking,
     };
   }
 
@@ -691,6 +699,12 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
     };
     if (c.authority_boundaries.escalation_visibility && c.authority_boundaries.escalation_visibility !== "visible") {
       ab.escalation_visibility = c.authority_boundaries.escalation_visibility;
+    }
+    if (c.authority_boundaries.anomaly_tracking?.cli || c.authority_boundaries.anomaly_tracking?.http) {
+      const at: Record<string, boolean> = {};
+      if (c.authority_boundaries.anomaly_tracking.cli) at.cli = true;
+      if (c.authority_boundaries.anomaly_tracking.http) at.http = true;
+      ab.anomaly_tracking = at;
     }
     result.authority_boundaries = ab;
     result.escalation_targets = {

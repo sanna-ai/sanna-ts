@@ -1167,3 +1167,171 @@ describe("patchChildProcess — HALT-regression guard", () => {
     expect(haltReceipt!.status).toBe("FAIL");
   });
 });
+
+// ── SAN-397: CLI invocation_anomaly emission ─────────────────────────
+
+const CLI_ANOMALY_YAML = `
+sanna_constitution: "0.1.0"
+identity:
+  agent_name: test-anomaly-agent
+  domain: anomaly-testing
+  description: Test constitution for CLI anomaly tracking
+provenance:
+  authored_by: test-author
+  approved_by:
+    - test-approver
+  approval_date: "2026-01-01"
+  approval_method: manual
+boundaries:
+  - id: B001
+    description: No unauthorized commands
+    category: safety
+    severity: critical
+authority_boundaries:
+  cannot_execute: []
+  must_escalate: []
+  can_execute: []
+  default_escalation: log
+  anomaly_tracking:
+    cli: true
+    http: false
+cli_permissions:
+  mode: strict
+  justification_required: false
+  commands:
+    - id: CLI001
+      binary: ls
+      authority: can_execute
+      argv_pattern: "*"
+      description: List files
+    - id: CLI002
+      binary: curl
+      authority: cannot_execute
+      argv_pattern: "*"
+      description: Blocked command
+`;
+
+describe("SAN-397: CLI invocation_anomaly emission", () => {
+  let tempDir: string;
+  let anomalyConstitutionPath: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync("/tmp/sanna-test-san397-cli-");
+    anomalyConstitutionPath = path.join(tempDir, "cli-anomaly.yaml");
+    fs.writeFileSync(anomalyConstitutionPath, CLI_ANOMALY_YAML);
+  });
+
+  afterEach(() => {
+    unpatchChildProcess();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("emits cli_invocation_anomaly when opted in and command suppressed", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+    expect(anomaly).toBeDefined();
+    expect(anomaly!.status).toBe("FAIL");
+  });
+
+  it("emits cli_invocation_halted when opted out (default)", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+    const halted = sink.receipts.find((r: any) => r.event_type === "cli_invocation_halted");
+    expect(halted).toBeDefined();
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+    expect(anomaly).toBeUndefined();
+  });
+
+  it("extension has attempted_command matching binary name", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+    expect(anomaly).toBeDefined();
+    const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+    expect(ext).toBeDefined();
+    expect(ext.attempted_command).toBe("curl");
+    expect(ext.suppression_basis).toBe("session_manifest");
+  });
+
+  it("parent_receipts contains CLI session_manifest fingerprint", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+    const manifest = sink.receipts.find((r: any) => r.event_type === "session_manifest");
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+    expect(manifest).toBeDefined();
+    expect(anomaly).toBeDefined();
+    expect((anomaly as any).parent_receipts).toContain(manifest!.full_fingerprint);
+  });
+
+  it("no anomaly when anomaly_tracking.cli is false", async () => {
+    const noAnomalyYaml = CLI_ANOMALY_YAML.replace("cli: true", "cli: false");
+    const noAnomalyPath = path.join(tempDir, "no-anomaly.yaml");
+    fs.writeFileSync(noAnomalyPath, noAnomalyYaml);
+
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: noAnomalyPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+    try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+    expect(anomaly).toBeUndefined();
+    const halted = sink.receipts.find((r: any) => r.event_type === "cli_invocation_halted");
+    expect(halted).toBeDefined();
+  });
+
+  it("non-suppressed halt still emits standard receipt", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    const cp = require_("node:child_process");
+    // "wget" is unlisted in strict mode -> halt, but NOT in suppressedPatterns (no entry in cli_permissions)
+    try { cp.execSync("wget https://example.com"); } catch { /* expected */ }
+
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+    expect(anomaly).toBeUndefined();
+    const halted = sink.receipts.find((r: any) => r.event_type === "cli_invocation_halted");
+    expect(halted).toBeDefined();
+  });
+});

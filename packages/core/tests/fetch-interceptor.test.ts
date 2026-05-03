@@ -952,3 +952,140 @@ describe("patchFetch — HALT-regression guard", () => {
     expect(haltReceipt!.status).toBe("FAIL");
   });
 });
+
+// ── SAN-397: HTTP invocation_anomaly emission ─────────────────────────
+
+const HTTP_ANOMALY_YAML = `
+sanna_constitution: "0.1.0"
+identity:
+  agent_name: test-anomaly-agent
+  domain: anomaly-testing
+  description: Test constitution for HTTP anomaly tracking
+provenance:
+  authored_by: test-author
+  approved_by:
+    - test-approver
+  approval_date: "2026-01-01"
+  approval_method: manual
+boundaries:
+  - id: B001
+    description: No unauthorized endpoints
+    category: safety
+    severity: critical
+authority_boundaries:
+  cannot_execute: []
+  must_escalate: []
+  can_execute: []
+  default_escalation: log
+  anomaly_tracking:
+    cli: false
+    http: true
+api_permissions:
+  mode: strict
+  justification_required: false
+  endpoints:
+    - id: API001
+      url_pattern: "https://api.example.com/data"
+      authority: can_execute
+      methods: ["GET"]
+      description: Allowed endpoint
+    - id: API002
+      url_pattern: "https://api.example.com/admin/*"
+      authority: cannot_execute
+      methods: ["*"]
+      description: Blocked admin endpoints
+`;
+
+describe("SAN-397: HTTP invocation_anomaly emission", () => {
+  let tempDir: string;
+  let anomalyConstitutionPath: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync("/tmp/sanna-test-san397-http-");
+    anomalyConstitutionPath = path.join(tempDir, "http-anomaly.yaml");
+    fs.writeFileSync(anomalyConstitutionPath, HTTP_ANOMALY_YAML);
+  });
+
+  afterEach(() => {
+    unpatchFetch();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("emits api_invocation_anomaly when opted in and endpoint suppressed", async () => {
+    const sink = makeSink();
+    const mock = createMockFetch(200);
+    globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+    await patchFetch({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+    expect(anomaly).toBeDefined();
+    expect(anomaly!.status).toBe("FAIL");
+  });
+
+  it("emits api_invocation_halted when opted out (default)", async () => {
+    const sink = makeSink();
+    const mock = createMockFetch(200);
+    globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+    await patchFetch({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+    });
+
+    try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+    const halted = sink.receipts.find((r: any) => r.event_type === "api_invocation_halted");
+    expect(halted).toBeDefined();
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+    expect(anomaly).toBeUndefined();
+  });
+
+  it("extension has attempted_endpoint matching pattern", async () => {
+    const sink = makeSink();
+    const mock = createMockFetch(200);
+    globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+    await patchFetch({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+    expect(anomaly).toBeDefined();
+    const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+    expect(ext).toBeDefined();
+    expect(ext.attempted_endpoint).toBe("https://api.example.com/admin/*");
+    expect(ext.suppression_basis).toBe("session_manifest");
+  });
+
+  it("parent_receipts contains HTTP session_manifest fingerprint", async () => {
+    const sink = makeSink();
+    const mock = createMockFetch(200);
+    globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+    await patchFetch({
+      constitutionPath: anomalyConstitutionPath,
+      sink,
+      agentId: "test-agent",
+    });
+
+    try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+    const manifest = sink.receipts.find((r: any) => r.event_type === "session_manifest");
+    const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+    expect(manifest).toBeDefined();
+    expect(anomaly).toBeDefined();
+    expect((anomaly as any).parent_receipts).toContain(manifest!.full_fingerprint);
+  });
+});

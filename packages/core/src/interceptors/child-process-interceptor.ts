@@ -37,6 +37,8 @@ interface InterceptorState {
   sink: ReceiptSink | null;
   options: PatchOptions | null;
   inIntercept: boolean;
+  manifestFullFingerprint: string | null;
+  suppressedPatterns: Set<string>;
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -48,6 +50,8 @@ const _state: InterceptorState = {
   sink: null,
   options: null,
   inIntercept: false,
+  manifestFullFingerprint: null,
+  suppressedPatterns: new Set(),
 };
 
 let _agentSessionId: string | null = null;
@@ -287,8 +291,10 @@ function patchedExecSync(command: string | Buffer, options?: Record<string, unkn
     const ev = evaluate(binary, argv, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv, ...ev, actionHash, exitCode: null, halted: true });
+      }
       throw makeEnoentError(binary);
     }
 
@@ -342,8 +348,10 @@ function patchedSpawnSync(
     const ev = evaluate(binary, actualArgs, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      }
       throw makeEnoentError(binary);
     }
 
@@ -413,8 +421,10 @@ function patchedExec(
     const ev = evaluate(binary, argv, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv, ...ev, actionHash, exitCode: null, halted: true });
+      }
       if (callback) {
         process.nextTick(() => callback!(makeEnoentError(binary), "", ""));
       }
@@ -482,8 +492,10 @@ function patchedExecFileSync(
     const ev = evaluate(binary, actualArgs, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      }
       throw makeEnoentError(binary);
     }
 
@@ -544,8 +556,10 @@ function patchedExecFile(
     const ev = evaluate(binary, actualArgs, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      }
       if (callback) {
         process.nextTick(() => callback!(makeEnoentError(binary), "", ""));
       }
@@ -612,8 +626,10 @@ function patchedSpawn(
     const ev = evaluate(binary, actualArgs, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv: actualArgs, ...ev, actionHash, exitCode: null, halted: true });
+      }
       throw makeEnoentError(binary);
     }
 
@@ -663,8 +679,10 @@ function patchedFork(
     const ev = evaluate(binary, forkArgs, justification, cwd, envKeys);
 
     if (!shouldExecute(ev.decision)) {
-      const actionHash = computeActionHash(null, "", "");
-      emitReceipt({ binary, argv: forkArgs, ...ev, actionHash, exitCode: null, halted: true });
+      if (!_checkAndEmitCliAnomaly(binary)) {
+        const actionHash = computeActionHash(null, "", "");
+        emitReceipt({ binary, argv: forkArgs, ...ev, actionHash, exitCode: null, halted: true });
+      }
       throw makeEnoentError(binary);
     }
 
@@ -748,6 +766,8 @@ export function unpatchChildProcess(): void {
   _state.options = null;
   _state.inIntercept = false;
   _state.active = false;
+  _state.manifestFullFingerprint = null;
+  _state.suppressedPatterns = new Set();
 }
 
 function _emitCliSessionManifest(): void {
@@ -791,6 +811,14 @@ function _emitCliSessionManifest(): void {
     content_mode_source: contentMode ? "local_config" : null,
   }) as Record<string, unknown>;
 
+  // SAN-397: capture fingerprint and suppressed patterns for anomaly emission
+  _state.manifestFullFingerprint = receipt.full_fingerprint as string;
+  {
+    const surfaces = (manifestExt as Record<string, unknown>).surfaces as Record<string, unknown> | undefined;
+    const cliSurf = surfaces?.cli as Record<string, unknown> | undefined;
+    _state.suppressedPatterns = new Set((cliSurf?.patterns_suppressed as string[] | undefined) ?? []);
+  }
+
   let finalReceipt: Record<string, unknown> = receipt;
   if (signingKey) {
     try {
@@ -805,4 +833,67 @@ function _emitCliSessionManifest(): void {
   if (result instanceof Promise) {
     result.catch((exc) => { throw exc; });
   }
+}
+
+// ── SAN-397: CLI anomaly emission ────────────────────────────────────
+
+function _emitCliInvocationAnomaly(binary: string): void {
+  if (_agentSessionId === null) {
+    _agentSessionId = randomUUID();
+  }
+  const opts = _state.options!;
+  const correlationId = `anomaly-cli-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+  const receipt = generateReceipt({
+    correlation_id: correlationId,
+    inputs: { query: `subprocess name=${binary}` },
+    outputs: { content: null },
+    checks: [],
+    enforcement: {
+      action: "halted",
+      reason: "command_suppressed_by_constitution",
+      enforcement_mode: opts.mode ?? "enforce",
+      failed_checks: [],
+      timestamp: new Date().toISOString(),
+    },
+    enforcementSurface: "cli_interceptor",
+    invariantsScope: "authority_only",
+    extensions: {
+      "com.sanna.anomaly": {
+        attempted_command: binary,
+        suppression_basis: "session_manifest",
+      },
+    },
+    parent_receipts: [_state.manifestFullFingerprint!],
+    event_type: "cli_invocation_anomaly",
+    content_mode: opts.contentMode ?? null,
+    content_mode_source: opts.contentMode ? "local_config" : null,
+    agent_identity: { agent_session_id: _agentSessionId },
+  }) as Record<string, unknown>;
+
+  let finalReceipt: Record<string, unknown> = receipt;
+  if (opts.signingKey) {
+    try {
+      const keyObject = createPrivateKey({ key: opts.signingKey, format: "pem" });
+      finalReceipt = signReceipt(receipt, keyObject, opts.agentId) as unknown as Record<string, unknown>;
+    } catch {
+      // Key conversion failure -- emit unsigned
+    }
+  }
+
+  _state.sink!.store(finalReceipt as unknown as Receipt).catch((err) => {
+    console.error(`cli_invocation_anomaly persist failed: ${err}`);
+  });
+}
+
+function _checkAndEmitCliAnomaly(binary: string): boolean {
+  if (
+    _state.constitution?.authority_boundaries?.anomaly_tracking?.cli &&
+    _state.suppressedPatterns.has(binary) &&
+    _state.manifestFullFingerprint
+  ) {
+    _emitCliInvocationAnomaly(binary);
+    return true;
+  }
+  return false;
 }
