@@ -10,7 +10,12 @@ import type { KeyObject } from "node:crypto";
 import { canonicalize, hashObj } from "./hashing.js";
 import { verify, getKeyId } from "./crypto.js";
 import { computeFingerprints } from "./receipt.js";
-import type { VerificationResult } from "./types.js";
+import type { VerificationResult, Check } from "./types.js";
+import {
+  verifySessionManifestReceipt,
+  verifyInvocationAnomalyReceipt,
+  VALID_ANOMALY_EVENT_TYPES,
+} from "./verifier-manifest.js";
 
 // ── Sanitize helper (same as receipt.ts) ─────────────────────────────
 
@@ -423,10 +428,62 @@ export function verifyReceipt(
   const tsErrors = checkTimestamp(receipt);
   allErrors.push(...tsErrors);
 
+  // SAN-358: manifest/anomaly semantic checks
+  const eventType = receipt.event_type as string | undefined;
+  let manifestChecks: Check[] = [];
+  if (eventType === "session_manifest") {
+    checksPerformed.push("manifest_checks");
+    manifestChecks = verifySessionManifestReceipt(receipt);
+    for (const chk of manifestChecks) {
+      if (chk.status === "FAIL") allErrors.push(chk.message);
+      else if (chk.status === "WARN") warnings.push(chk.message);
+    }
+  } else if (eventType && VALID_ANOMALY_EVENT_TYPES.has(eventType)) {
+    checksPerformed.push("manifest_checks");
+    manifestChecks = verifyInvocationAnomalyReceipt(receipt, null);
+    for (const chk of manifestChecks) {
+      if (chk.status === "FAIL") allErrors.push(chk.message);
+      else if (chk.status === "WARN") warnings.push(chk.message);
+    }
+  }
+
   return {
     valid: allErrors.length === 0,
     errors: allErrors,
     warnings,
     checks_performed: checksPerformed,
+    checks: manifestChecks,
   };
+}
+
+export function verifyReceiptSet(
+  receipts: Record<string, unknown>[],
+  publicKey?: KeyObject,
+): Record<string, VerificationResult> {
+  const results: Record<string, VerificationResult> = {};
+  for (const receipt of receipts) {
+    const rid = String(receipt.receipt_id ?? "unknown");
+    results[rid] = verifyReceipt(receipt, publicKey);
+  }
+  // Cross-receipt anomaly pass
+  for (const receipt of receipts) {
+    const rid = String(receipt.receipt_id ?? "unknown");
+    const et = receipt.event_type as string | undefined;
+    if (et && VALID_ANOMALY_EVENT_TYPES.has(et)) {
+      const crossChecks = verifyInvocationAnomalyReceipt(receipt, receipts);
+      const result = results[rid];
+      result.checks = crossChecks;
+      // Re-derive errors/warnings from cross-receipt checks (replaces single-receipt WARNs)
+      // Remove single-receipt WARN messages for the two cross-receipt checks
+      result.warnings = result.warnings.filter(
+        (w) => w !== "Cross-receipt parent resolution requires receipt set; use verify_receipt_set"
+      );
+      for (const chk of crossChecks) {
+        if (chk.status === "FAIL") result.errors.push(chk.message);
+        else if (chk.status === "WARN") result.warnings.push(chk.message);
+      }
+      result.valid = result.errors.length === 0;
+    }
+  }
+  return results;
 }

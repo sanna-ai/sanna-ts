@@ -311,11 +311,18 @@ export interface Receipt {
 
 // ── Verification types ───────────────────────────────────────────────
 
+export interface Check {
+  name: string;
+  status: "PASS" | "FAIL" | "WARN";
+  message: string;
+}
+
 export interface VerificationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
   checks_performed: string[];
+  checks?: Check[];
 }
 
 // ── Store types ─────────────────────────────────────────────────────
