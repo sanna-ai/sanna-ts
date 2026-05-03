@@ -1,3 +1,20 @@
+## [Unreleased] -- 2026-05-02 (SAN-358 Prompt B)
+
+### Added
+- New module `packages/core/src/verifier-manifest.ts` with `verifySessionManifestReceipt()` (9 checks) and `verifyInvocationAnomalyReceipt()` (3 checks). Mirror of Python `src/sanna/verify_manifest.py` from SAN-358 Prompt A (PR #46). Cross-SDK byte-equal verdict text.
+- New public function `verifyReceiptSet(receipts, publicKey?)` in verifier.ts for cross-receipt parent-resolution. `verifyReceipt()` signature unchanged (backward compat).
+- `Check` interface added to types.ts; optional `checks` field on `VerificationResult`.
+- Spec submodule bumped to 0f99a44 (SAN-395: reserves com.sanna.anomaly namespace + B3/B4 schema rules).
+
+### Cross-SDK
+- Every Check.message string matches Python character-for-character.
+- Cross-language verdict fixture (SAN-358 Prompt C) will assert identical verdicts.
+
+### Tickets
+- SAN-358 Prompt B (this entry; TS half).
+- Companion: SAN-358 Prompt A (Python, PR #46 merged), SAN-358 Prompt C (sanna-protocol fixture).
+- Adjacent: SAN-394 (TS schema-validator gap; orthogonal), SAN-395 (merged; spec namespace).
+
 ## [Unreleased] -- 2026-05-02 (SAN-368)
 
 ### Added

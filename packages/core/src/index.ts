@@ -71,7 +71,8 @@ export {
 
 export type { ReceiptParams } from "./receipt.js";
 
-export { verifyReceipt } from "./verifier.js";
+export { verifyReceipt, verifyReceiptSet } from "./verifier.js";
+export { verifySessionManifestReceipt, verifyInvocationAnomalyReceipt } from "./verifier-manifest.js";
 
 export { ReceiptStore } from "./store.js";
 
@@ -221,6 +222,7 @@ export type {
   Enforcement,
   ConstitutionRef,
   VerificationResult,
+  Check,
   ReceiptQueryFilters,
   DriftStatus,
   CheckDriftDetail,
