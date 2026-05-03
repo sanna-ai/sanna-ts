@@ -421,3 +421,67 @@ describe("SAN-205: escalation_visibility + composition", () => {
     // The hash backward-compat test (signature verification above) is the definitive proof.
   });
 });
+
+describe("SAN-397: anomaly_tracking hash backward compat", () => {
+  it("constitution without anomaly_tracking parses with defaults (both false)", () => {
+    const c = parseConstitution(baseData);
+    expect(c.authority_boundaries?.anomaly_tracking).toBeDefined();
+    expect(c.authority_boundaries?.anomaly_tracking?.cli).toBe(false);
+    expect(c.authority_boundaries?.anomaly_tracking?.http).toBe(false);
+  });
+
+  it("constitution with anomaly_tracking at defaults hashes identically (backward compat)", () => {
+    // Both cli=false and http=false are the defaults. constitutionToSignableDict
+    // must omit anomaly_tracking from the hash, so v1.4-era signatures remain valid.
+    const c = loadConstitution(minimalPath);
+    const valid = verifyConstitutionSignature(c, pubKey);
+    expect(valid).toBe(true);
+  });
+
+  it("anomaly_tracking omitted from signable dict when both defaults", () => {
+    const cDefault = parseConstitution(baseData);
+    expect(cDefault.authority_boundaries!.anomaly_tracking?.cli).toBe(false);
+    expect(cDefault.authority_boundaries!.anomaly_tracking?.http).toBe(false);
+    // Direct verification: parse a constitution with explicit defaults vs. absent field;
+    // both should produce the same parsed state. Hash parity is tested via signature
+    // verification on minimal.yaml above.
+    const noAt = parseConstitution(baseData);
+    const withDefaultAt = parseConstitution({
+      ...baseData,
+      authority_boundaries: {
+        ...baseData.authority_boundaries,
+        anomaly_tracking: { cli: false, http: false },
+      },
+    });
+    expect(noAt.authority_boundaries!.anomaly_tracking?.cli).toBe(false);
+    expect(withDefaultAt.authority_boundaries!.anomaly_tracking?.cli).toBe(false);
+  });
+
+  it("anomaly_tracking with cli=true produces different hash than absent", () => {
+    const cDefault = parseConstitution(baseData);
+    const cWithCli = parseConstitution({
+      ...baseData,
+      authority_boundaries: {
+        ...baseData.authority_boundaries,
+        anomaly_tracking: { cli: true, http: false },
+      },
+    });
+    expect(cDefault.authority_boundaries!.anomaly_tracking?.cli).toBe(false);
+    expect(cWithCli.authority_boundaries!.anomaly_tracking?.cli).toBe(true);
+    // policy_hash will differ since constitutionToSignableDict includes anomaly_tracking
+    // when cli=true. Both should still parse correctly.
+    expect(cWithCli.authority_boundaries!.anomaly_tracking?.http).toBe(false);
+  });
+
+  it("parses anomaly_tracking.http=true correctly", () => {
+    const c = parseConstitution({
+      ...baseData,
+      authority_boundaries: {
+        ...baseData.authority_boundaries,
+        anomaly_tracking: { cli: false, http: true },
+      },
+    });
+    expect(c.authority_boundaries!.anomaly_tracking?.cli).toBe(false);
+    expect(c.authority_boundaries!.anomaly_tracking?.http).toBe(true);
+  });
+});

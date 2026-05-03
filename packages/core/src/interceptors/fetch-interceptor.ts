@@ -38,6 +38,8 @@ interface HttpInterceptorState {
   options: HttpPatchOptions | null;
   excludePatterns: string[];
   inIntercept: boolean;
+  manifestFullFingerprint: string | null;
+  suppressedPatterns: Set<string>;
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -50,6 +52,8 @@ const _state: HttpInterceptorState = {
   options: null,
   excludePatterns: [],
   inIntercept: false,
+  manifestFullFingerprint: null,
+  suppressedPatterns: new Set(),
 };
 
 let _agentSessionId: string | null = null;
@@ -381,17 +385,19 @@ async function patchedFetch(input: string | URL | Request, init?: RequestInit): 
     const eventType = determineEventType(decision, mode);
 
     if (!shouldExecute(decision)) {
-      // Halted action hash
-      const actionHash = hashObj({
-        body_hash: EMPTY_HASH,
-        response_headers_keys: [] as string[],
-        status_code: null,
-      });
-      await emitHttpReceipt({
-        method, url, inputHash, reasoningHash, actionHash,
-        decision, reason, ruleId: authDecision.rule_id,
-        eventType, contextLimitation, statusCode: null, halted: true,
-      });
+      if (!_checkAndEmitHttpAnomaly(url)) {
+        // Halted action hash
+        const actionHash = hashObj({
+          body_hash: EMPTY_HASH,
+          response_headers_keys: [] as string[],
+          status_code: null,
+        });
+        await emitHttpReceipt({
+          method, url, inputHash, reasoningHash, actionHash,
+          decision, reason, ruleId: authDecision.rule_id,
+          eventType, contextLimitation, statusCode: null, halted: true,
+        });
+      }
 
       const err = new TypeError("fetch failed");
       err.cause = new Error(`connect ECONNREFUSED ${url}`);
@@ -523,17 +529,19 @@ function createPatchedHttpRequest(protocol: string, originalKey: string): Functi
       const eventType = determineEventType(decision, mode);
 
       if (!shouldExecute(decision)) {
-        const actionHash = hashObj({
-          body_hash: EMPTY_HASH,
-          response_headers_keys: [] as string[],
-          status_code: null,
-        });
-        emitHttpReceipt({
-          method, url, inputHash, reasoningHash, actionHash,
-          decision, reason, ruleId: authDecision.rule_id,
-          eventType, contextLimitation: "api_no_justification",
-          statusCode: null, halted: true,
-        });
+        if (!_checkAndEmitHttpAnomaly(url)) {
+          const actionHash = hashObj({
+            body_hash: EMPTY_HASH,
+            response_headers_keys: [] as string[],
+            status_code: null,
+          });
+          emitHttpReceipt({
+            method, url, inputHash, reasoningHash, actionHash,
+            decision, reason, ruleId: authDecision.rule_id,
+            eventType, contextLimitation: "api_no_justification",
+            statusCode: null, halted: true,
+          });
+        }
         const err = new Error(`connect ECONNREFUSED ${url}`) as NodeJS.ErrnoException;
         err.code = "ECONNREFUSED";
         throw err;
@@ -647,6 +655,8 @@ export function unpatchFetch(): void {
   _state.excludePatterns = [];
   _state.inIntercept = false;
   _state.active = false;
+  _state.manifestFullFingerprint = null;
+  _state.suppressedPatterns = new Set();
 }
 
 function _emitHttpSessionManifest(): void {
@@ -694,6 +704,14 @@ function _emitHttpSessionManifest(): void {
     agent_identity: { agent_session_id: _agentSessionId },
   }) as Record<string, unknown>;
 
+  // SAN-397: capture fingerprint and suppressed patterns for anomaly emission
+  _state.manifestFullFingerprint = receipt.full_fingerprint as string;
+  {
+    const surfaces = (manifestExt as Record<string, unknown>).surfaces as Record<string, unknown> | undefined;
+    const httpSurf = surfaces?.http as Record<string, unknown> | undefined;
+    _state.suppressedPatterns = new Set((httpSurf?.patterns_suppressed as string[] | undefined) ?? []);
+  }
+
   let finalReceipt: Record<string, unknown> = receipt;
   if (signingKey) {
     try {
@@ -708,4 +726,69 @@ function _emitHttpSessionManifest(): void {
   if (result instanceof Promise) {
     result.catch((exc) => { throw exc; });
   }
+}
+
+// ── SAN-397: HTTP anomaly emission ───────────────────────────────────
+
+function _emitHttpInvocationAnomaly(endpointPattern: string): void {
+  if (_agentSessionId === null) {
+    _agentSessionId = randomUUID();
+  }
+  const opts = _state.options!;
+  const correlationId = `anomaly-http-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+  const receipt = generateReceipt({
+    correlation_id: correlationId,
+    inputs: { query: `api endpoint=${endpointPattern}` },
+    outputs: { content: null },
+    checks: [],
+    enforcement: {
+      action: "halted",
+      reason: "endpoint_suppressed_by_constitution",
+      enforcement_mode: opts.mode ?? "enforce",
+      failed_checks: [],
+      timestamp: new Date().toISOString(),
+    },
+    enforcementSurface: "http_interceptor",
+    invariantsScope: "authority_only",
+    extensions: {
+      "com.sanna.anomaly": {
+        attempted_endpoint: endpointPattern,
+        suppression_basis: "session_manifest",
+      },
+    },
+    parent_receipts: [_state.manifestFullFingerprint!],
+    event_type: "api_invocation_anomaly",
+    content_mode: opts.contentMode ?? null,
+    content_mode_source: opts.contentMode ? "local_config" : null,
+    agent_identity: { agent_session_id: _agentSessionId },
+  }) as Record<string, unknown>;
+
+  let finalReceipt: Record<string, unknown> = receipt;
+  if (opts.signingKey) {
+    try {
+      const keyObject = createPrivateKey({ key: opts.signingKey, format: "pem" });
+      finalReceipt = signReceipt(receipt, keyObject, opts.agentId) as unknown as Record<string, unknown>;
+    } catch {
+      // Key conversion failure -- emit unsigned
+    }
+  }
+
+  _state.sink!.store(finalReceipt as unknown as Receipt).catch((err) => {
+    console.error(`api_invocation_anomaly persist failed: ${err}`);
+  });
+}
+
+function _checkAndEmitHttpAnomaly(url: string): boolean {
+  const anomalyTracking = _state.constitution?.authority_boundaries?.anomaly_tracking;
+  if (!anomalyTracking?.http || !_state.manifestFullFingerprint) return false;
+
+  const normalizedUrl = normalizeUrlForMatching(url);
+  for (const pattern of _state.suppressedPatterns) {
+    if (globMatch(url, pattern) || globMatch(normalizedUrl, pattern)) {
+      _emitHttpInvocationAnomaly(pattern);
+      return true;
+    }
+  }
+  return false;
 }

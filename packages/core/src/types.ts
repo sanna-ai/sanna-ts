@@ -74,6 +74,11 @@ export interface EscalationRule {
   target: EscalationTargetConfig | null;
 }
 
+export interface AnomalyTracking {
+  cli: boolean;
+  http: boolean;
+}
+
 export interface AuthorityBoundaries {
   cannot_execute: string[];
   must_escalate: EscalationRule[];
@@ -86,6 +91,7 @@ export interface AuthorityBoundaries {
    * tools/list (anti-enumeration). Optional; defaults to "visible".
    */
   escalation_visibility?: "visible" | "suppressed";
+  anomaly_tracking?: AnomalyTracking;
 }
 
 /**

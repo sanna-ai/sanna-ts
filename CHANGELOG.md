@@ -1,3 +1,34 @@
+## [Unreleased] -- 2026-05-03 (SAN-397)
+
+### Added
+- `AnomalyTracking` interface + `AuthorityBoundaries.anomaly_tracking`
+  (per-surface opt-in for CLI/HTTP invocation_anomaly emission). Default:
+  both false (backward compat).
+- CLI interceptor: when `anomaly_tracking.cli === true`, suppressed-command
+  attempts emit `cli_invocation_anomaly` receipt (substitutes for
+  `cli_invocation_halted`). Extensions: `com.sanna.anomaly.attempted_command`.
+  parent_receipts chains to active CLI session_manifest.
+- HTTP interceptor: when `anomaly_tracking.http === true`, suppressed-endpoint
+  attempts emit `api_invocation_anomaly` receipt. Extensions:
+  `com.sanna.anomaly.attempted_endpoint`. parent_receipts chains to active
+  HTTP session_manifest.
+- Spec submodule bumped to include SAN-397 Prompt A (constitution.schema.json
+  gains anomaly_tracking field).
+
+### Hash backward-compat
+- `constitutionToSignableDict` omits `anomaly_tracking` when at defaults
+  (both false). Pre-v1.5 constitutions hash IDENTICALLY without re-signing.
+  Cross-language hash parity with Python PR #48.
+
+### Cross-SDK
+- Extension shape matches Python byte-for-byte (SAN-395 Section 2.22.2).
+- content_mode on receipt envelope only (Section 2.22.5 spec-ahead-of-impl
+  consistent with gateway + Python interceptors).
+
+### Tickets
+- SAN-397 Prompt C (this entry; TS half). Closes SAN-397.
+- Companion: Prompt A (protocol, PR #27), Prompt B (Python, PR #48).
+
 ## [Unreleased] -- 2026-05-02 (SAN-359)
 
 ### Fixed
