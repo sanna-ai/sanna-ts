@@ -97,6 +97,7 @@ export class SannaGateway {
   private _escalationReceiptFingerprints = new Map<string, string>();
   private _manifestEmitted = false;
   private _manifestFailed = false;
+  private _manifestEmitPromise: Promise<boolean> | null = null; // SAN-380
   private _manifestFullFingerprint: string | null = null;
   private _suppressedToolNames: Set<string> = new Set();
   private _allTools: Array<{
@@ -365,16 +366,22 @@ export class SannaGateway {
         return true;
       });
 
-      // SAN-359: fail-closed manifest emission with belt-and-suspenders
+      // SAN-359/SAN-380: fail-closed manifest emission; shared-promise prevents
+      // concurrent tools/list calls from triggering duplicate emissions.
       if (!this._manifestEmitted) {
-        let success = false;
-        try {
-          success = await this._emitSessionManifest();
-        } catch (err) {
-          console.error(`session_manifest emission unexpected failure: ${err}`);
-          this._manifestFailed = true;
+        if (!this._manifestEmitPromise) {
+          this._manifestEmitPromise = (async () => {
+            this._manifestEmitted = true;
+            try {
+              return await this._emitSessionManifest();
+            } catch (err) {
+              console.error(`session_manifest emission unexpected failure: ${err}`);
+              this._manifestFailed = true;
+              return false;
+            }
+          })();
         }
-        this._manifestEmitted = true;
+        const success = await this._manifestEmitPromise;
         if (!success) {
           return { tools: [] };
         }
