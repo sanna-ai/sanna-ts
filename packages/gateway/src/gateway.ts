@@ -96,6 +96,7 @@ export class SannaGateway {
   private _agentSessionId: string = "";
   private _escalationReceiptFingerprints = new Map<string, string>();
   private _manifestEmitted = false;
+  private _manifestFailed = false;
   private _manifestFullFingerprint: string | null = null;
   private _suppressedToolNames: Set<string> = new Set();
   private _allTools: Array<{
@@ -364,9 +365,24 @@ export class SannaGateway {
         return true;
       });
 
+      // SAN-359: fail-closed manifest emission with belt-and-suspenders
       if (!this._manifestEmitted) {
-        await this._emitSessionManifest();
+        let success = false;
+        try {
+          success = await this._emitSessionManifest();
+        } catch (err) {
+          console.error(`session_manifest emission unexpected failure: ${err}`);
+          this._manifestFailed = true;
+        }
         this._manifestEmitted = true;
+        if (!success) {
+          return { tools: [] };
+        }
+      }
+
+      // SAN-359: sticky fail-closed for the gateway lifecycle
+      if (this._manifestFailed) {
+        return { tools: [] };
       }
 
       return {
@@ -872,58 +888,84 @@ export class SannaGateway {
     return receipt as Record<string, unknown>;
   }
 
-  private async _emitSessionManifest(): Promise<void> {
+  private async _emitSessionManifest(): Promise<boolean> {
     // Use originalName so evaluateAuthority can match against constitution patterns.
     // Namespaced names (e.g. "echo_echo") normalize differently from "echo" and
     // would not match constitution entries like cannot_execute: ["echo"].
     const mcpToolNames = this._allTools.map((t) => t.originalName);
 
-    let manifestExt: Record<string, unknown>;
-    let statusOverride: "PASS" | "FAIL" = "PASS";
     try {
-      manifestExt = generateManifest(
+      const manifestExt = generateManifest(
         this._constitution,
         mcpToolNames,
         ["mcp"],
         this._contentMode ?? undefined,
       ) as unknown as Record<string, unknown>;
-    } catch {
-      statusOverride = "FAIL";
-      manifestExt = { version: "0.1", composition_basis: "static", surfaces: {} };
+
+      const correlationId = `manifest-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+      const receipt = generateReceipt({
+        correlation_id: correlationId,
+        inputs: { query: "session_manifest" },
+        outputs: { content: null },
+        checks: [],
+        status: "PASS",
+        workflow_id: this._workflowId,
+        content_mode: this._contentMode,
+        content_mode_source: this._contentMode ? "local_config" : null,
+        enforcementSurface: "gateway",
+        invariantsScope: "none",
+        extensions: { "com.sanna.manifest": manifestExt },
+        event_type: "session_manifest",
+        agent_identity: { agent_session_id: this._agentSessionId },
+      }) as Record<string, unknown>;
+
+      // SAN-209 Issue 18: capture full_fingerprint BEFORE persistence so anomaly
+      // receipts can chain even if sink fails.
+      this._manifestFullFingerprint = receipt.full_fingerprint as string;
+
+      let finalReceipt: Record<string, unknown> = receipt;
+      if (this._signingKey && this._config.receipts?.sign !== false) {
+        finalReceipt = signReceipt(
+          receipt,
+          this._signingKey,
+          this._constitution.identity?.agent_name ?? "sanna-gateway",
+        );
+      }
+
+      this._storeReceipt(finalReceipt);
+      return true;
+    } catch (err) {
+      console.error(`session_manifest emission failed: ${err}`);
+      this._manifestFailed = true;
+      // Best-effort FAIL receipt for audit trail
+      try {
+        const correlationId = `manifest-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+        const failManifestExt = { version: "0.1", composition_basis: "static", surfaces: {} };
+        const failReceipt = generateReceipt({
+          correlation_id: correlationId,
+          inputs: { query: "session_manifest" },
+          outputs: { content: null },
+          checks: [],
+          status: "FAIL",
+          workflow_id: this._workflowId,
+          content_mode: this._contentMode,
+          content_mode_source: this._contentMode ? "local_config" : null,
+          enforcementSurface: "gateway",
+          invariantsScope: "none",
+          extensions: { "com.sanna.manifest": failManifestExt },
+          event_type: "session_manifest",
+          agent_identity: { agent_session_id: this._agentSessionId },
+        }) as Record<string, unknown>;
+        if (!this._manifestFullFingerprint) {
+          this._manifestFullFingerprint = failReceipt.full_fingerprint as string;
+        }
+        this._storeReceipt(failReceipt);
+      } catch (failErr) {
+        console.error(`session_manifest FAIL receipt also failed: ${failErr}`);
+      }
+      return false;
     }
-
-    const correlationId = `manifest-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-
-    const receipt = generateReceipt({
-      correlation_id: correlationId,
-      inputs: { query: "session_manifest" },
-      outputs: { content: null },
-      checks: [],
-      status: statusOverride,
-      workflow_id: this._workflowId,
-      content_mode: this._contentMode,
-      content_mode_source: this._contentMode ? "local_config" : null,
-      enforcementSurface: "gateway",
-      invariantsScope: "none",
-      extensions: { "com.sanna.manifest": manifestExt },
-      event_type: "session_manifest",
-      agent_identity: { agent_session_id: this._agentSessionId },
-    }) as Record<string, unknown>;
-
-    // SAN-209 Issue 18: capture full_fingerprint BEFORE persistence so anomaly
-    // receipts can chain even if sink fails.
-    this._manifestFullFingerprint = receipt.full_fingerprint as string;
-
-    let finalReceipt: Record<string, unknown> = receipt;
-    if (this._signingKey && this._config.receipts?.sign !== false) {
-      finalReceipt = signReceipt(
-        receipt,
-        this._signingKey,
-        this._constitution.identity?.agent_name ?? "sanna-gateway",
-      );
-    }
-
-    this._storeReceipt(finalReceipt);
   }
 
   private async _emitInvocationAnomaly(attemptedTool: string): Promise<void> {
