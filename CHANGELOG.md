@@ -1,3 +1,15 @@
+## [Unreleased] -- 2026-05-03 (SAN-380)
+
+### Fixed
+- Gateway ListToolsRequestSchema handler: session_manifest emission
+  protected by shared-promise pattern. Concurrent tools/list calls
+  await the same emission promise (exactly one manifest emitted;
+  second call waits for completion). No TOCTOU gap.
+  Cross-SDK parity with sanna-repo SAN-380 Prompt A.
+
+### Tickets
+- SAN-380 Prompt B (this entry; TS half). Closes SAN-380.
+
 ## [Unreleased] -- 2026-05-03 (SAN-379)
 
 ### Fixed

@@ -199,3 +199,50 @@ describe("SAN-359: gateway fail-closed on manifest failure", () => {
     expect(Object.keys(response)).not.toContain("error");
   }, 30_000);
 });
+
+describe("SAN-380: concurrent tools/list shared-promise pattern", () => {
+  it("concurrent tools/list calls emit exactly one session_manifest", async () => {
+    const sink = new CaptureSink();
+    const { client } = await startGateway(makeConfig(), sink);
+
+    // Fire two listTools concurrently
+    const [r1, r2] = await Promise.all([client.listTools(), client.listTools()]);
+
+    const manifestReceipts = sink.receipts.filter(
+      (r: any) => r.event_type === "session_manifest",
+    );
+    expect(manifestReceipts).toHaveLength(1);
+
+    // Both calls should return the same non-empty tools list
+    expect(r1.tools.length).toBeGreaterThan(0);
+    expect(r2.tools.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  it("second concurrent call waits for emission to complete", async () => {
+    const sink = new CaptureSink();
+    const { client, gw } = await startGateway(makeConfig(), sink);
+
+    // Wrap _emitSessionManifest with a 100ms delay
+    const original = (gw as any)._emitSessionManifest.bind(gw);
+    let emitCount = 0;
+    vi.spyOn(gw as any, "_emitSessionManifest").mockImplementation(async () => {
+      emitCount++;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return original();
+    });
+
+    const start = Date.now();
+    const [r1, r2] = await Promise.all([client.listTools(), client.listTools()]);
+    const elapsed = Date.now() - start;
+
+    // Only one emission should have fired
+    expect(emitCount).toBe(1);
+
+    // Both calls should have waited for the delayed emission (>= 100ms)
+    expect(elapsed).toBeGreaterThanOrEqual(100);
+
+    // Both calls should return tools once emission completes
+    expect(r1.tools.length).toBeGreaterThan(0);
+    expect(r2.tools.length).toBeGreaterThan(0);
+  }, 30_000);
+});
