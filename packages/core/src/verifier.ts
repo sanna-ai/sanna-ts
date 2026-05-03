@@ -6,6 +6,12 @@
  */
 
 import type { KeyObject } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 import { canonicalize, hashObj } from "./hashing.js";
 import { verify, getKeyId } from "./crypto.js";
@@ -43,6 +49,42 @@ const HEX64_RE = /^[a-f0-9]{64}$/;
 const HEX16_RE = /^[a-f0-9]{16}$/;
 
 const NON_EVALUATED = new Set(["NOT_CHECKED", "ERRORED"]);
+
+// ── ajv validator (lazy singleton) ───────────────────────────────────
+
+// Compiled once on first use; reused for all subsequent validations.
+// Catches conditional allOf rules (B1/B2/A1/A3/B3/B4/MODIFY/R1/R2) that
+// the hand-rolled checks below do not cover.
+//
+// `any` casts mirror the test pattern (ajv as any) to satisfy the DTS
+// builder -- Ajv2020/addFormats types don't satisfy TS2020's constructor
+// constraint when resolved via Node16 moduleResolution.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _ajvValidate: ((data: unknown) => boolean) & { errors?: any[] | null } | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getAjvValidator(): ((data: unknown) => boolean) & { errors?: any[] | null } {
+  if (_ajvValidate) return _ajvValidate;
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const schemaPath = resolve(__dirname, "../../../spec/schemas/receipt.schema.json");
+  const fullSchema = JSON.parse(readFileSync(schemaPath, "utf-8")) as { allOf?: unknown[] };
+  // Compile ONLY the allOf conditional rules, not the full property/required
+  // definitions. The hand-rolled checks above already cover unconditional
+  // required-field rules; running the full schema would duplicate those with
+  // different error messages and break existing test fixtures that omit optional
+  // fields (e.g. CheckResult.name). The allOf rules have no $ref/$defs
+  // dependencies so they extract cleanly.
+  const conditionalSchema = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "allOf": fullSchema.allOf ?? [],
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ajv = new (Ajv2020 as any)({ allErrors: true, strict: false });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (addFormats as any)(ajv);
+  _ajvValidate = ajv.compile(conditionalSchema) as typeof _ajvValidate;
+  return _ajvValidate!;
+}
 
 // ── Individual checks ────────────────────────────────────────────────
 
@@ -125,6 +167,32 @@ function checkSchema(receipt: Record<string, unknown>): string[] {
     if (val && !HEX64_RE.test(val)) {
       errors.push(`${field} invalid format: '${val}' (expected 64 hex)`);
     }
+  }
+
+  // ── ajv conditional-rule validation (SAN-394) ───────────────────────
+  // Second pass: catches B1/B2/A1/A3/B3/B4/MODIFY/R1/R2 rules that the
+  // hand-rolled checks above do not cover. Verdict-level cross-SDK parity:
+  // same receipts fail in both Python (jsonschema) and TS (ajv). Error
+  // message text differs between libraries (expected); error presence is
+  // the parity gate.
+  try {
+    const validate = getAjvValidator();
+    const valid = validate(receipt);
+    if (!valid && validate.errors) {
+      for (const err of validate.errors) {
+        const path = err.instancePath || "/";
+        const msg = `Schema validation failed: ${err.message} (at ${path})`;
+        // Dedup: skip if a hand-rolled check already caught a violation
+        // for the same field (avoids double-reporting missing agent_identity etc.)
+        const fieldName = path.split("/").pop() ?? "";
+        if (!errors.some((e) => fieldName && e.includes(fieldName))) {
+          errors.push(msg);
+        }
+      }
+    }
+  } catch (ajvErr) {
+    // Schema compilation failure is a verifier bug, not a receipt bug.
+    errors.push(`Schema validation internal error: ${String(ajvErr)}`);
   }
 
   return errors;
