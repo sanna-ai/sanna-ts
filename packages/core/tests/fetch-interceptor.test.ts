@@ -1089,3 +1089,37 @@ describe("SAN-397: HTTP invocation_anomaly emission", () => {
     expect((anomaly as any).parent_receipts).toContain(manifest!.full_fingerprint);
   });
 });
+
+// ── SAN-379: enforcement_mode schema conformance ──────────────────────
+
+describe("SAN-379: enforcement_mode schema conformance", () => {
+  it("enforce mode produces enforcement_mode='halt'", async () => {
+    const sink = makeSink();
+    await patchWithMock(STRICT_CONSTITUTION, sink, { mode: "enforce" });
+
+    try { await fetch("https://unknown.com/api"); } catch { /* expected */ }
+
+    const receipt = firstInvocationReceipt(sink);
+    expect((receipt as any).enforcement.enforcement_mode).toBe("halt");
+  });
+
+  it("audit mode produces enforcement_mode='warn'", async () => {
+    const sink = makeSink();
+    await patchWithMock(STRICT_CONSTITUTION, sink, { mode: "audit" });
+
+    await fetch("https://unknown.com/api");
+
+    const receipt = firstInvocationReceipt(sink);
+    expect((receipt as any).enforcement.enforcement_mode).toBe("warn");
+  });
+
+  it("passthrough mode produces enforcement_mode='log'", async () => {
+    const sink = makeSink();
+    await patchWithMock(PERMISSIVE_CONSTITUTION, sink, { mode: "passthrough" });
+
+    await fetch("https://unknown.com/api");
+
+    const receipt = firstInvocationReceipt(sink);
+    expect((receipt as any).enforcement.enforcement_mode).toBe("log");
+  });
+});
