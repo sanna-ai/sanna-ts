@@ -77,6 +77,31 @@ interface DownstreamEntry {
   circuitBreaker: CircuitBreaker;
 }
 
+// Helpers
+
+// Config DSL -> receipt schema enforcement_mode enum (SAN-405).
+// Spec schema requires {halt, warn, log}; config DSL uses
+// {enforced, advisory, permissive}. The anomaly path at gateway.ts (~996)
+// hardcodes "halt"; the non-anomaly path uses this helper. Fails loud on
+// unsupported config rather than emitting an invalid value.
+function configModeToEnforcementLevel(
+    mode: "enforced" | "advisory" | "permissive",
+): "halt" | "warn" | "log" {
+    const map: Record<string, "halt" | "warn" | "log"> = {
+        enforced: "halt",
+        advisory: "warn",
+        permissive: "log",
+    };
+    const result = map[mode];
+    if (!result) {
+        throw new Error(
+            `Invalid enforcement.mode: '${mode}'. ` +
+            `Expected one of: enforced, advisory, permissive.`,
+        );
+    }
+    return result;
+}
+
 // ── SannaGateway ─────────────────────────────────────────────────────
 
 export class SannaGateway {
@@ -867,7 +892,7 @@ export class SannaGateway {
             failed_checks: checks
               .filter((c) => !c.passed)
               .map((c) => c.check_id),
-            enforcement_mode: this._config.enforcement.mode,
+            enforcement_mode: configModeToEnforcementLevel(this._config.enforcement.mode),
             timestamp: new Date().toISOString(),
           },
       parent_receipts: parentReceipts,

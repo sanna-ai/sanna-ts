@@ -1,3 +1,26 @@
+## [Unreleased] -- 2026-05-05 (SAN-405)
+
+### Fixed
+- Gateway non-anomaly path emitted `enforcement_mode` directly from config
+  DSL ({enforced, advisory, permissive}) into the receipt, violating the
+  receipt schema enum ({halt, warn, log}). Python verifier rejected such
+  receipts; TS verifier silently accepted (cross-SDK divergence on a
+  normative enforcement field). The anomaly path at gateway.ts (~996)
+  already hardcoded "halt" correctly and is unchanged.
+
+### Added
+- `configModeToEnforcementLevel()` helper: maps config DSL to spec enum
+  (enforced->halt, advisory->warn, permissive->log) with fail-loud behavior
+  on unsupported values (defense against malformed runtime config that
+  bypasses the TypeScript type).
+- Regression tests covering all three config modes through the non-anomaly
+  halted path, plus a fail-loud test for unknown modes.
+
+### Tickets
+- SAN-405 (this entry).
+- Pairs the separate ticket on TS verifier full-schema enforcement, which
+  would catch this class of cross-SDK emission divergence at verifier time.
+
 ## [Unreleased] -- 2026-05-03 (SAN-380)
 
 ### Fixed
