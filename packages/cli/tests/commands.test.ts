@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import yaml from "js-yaml";
+import AdmZip from "adm-zip";
 import {
   generateKeypair,
   exportPrivateKeyPem,
@@ -863,6 +864,136 @@ describe("CLI Commands (unit tests via imports)", () => {
 
       const output = logs.join("\n");
       expect(output).toContain("INVALID");
+      expect(process.exitCode).toBe(1);
+      process.exitCode = 0;
+    });
+
+    it("warning banner when no anchor (stderr, non-JSON)", async () => {
+      const { runBundleVerify } = await import("../src/commands/bundle-verify.js");
+      const bundlePath = createTestBundleZip(tmpDir);
+      const errs: string[] = [];
+      const origErr = console.error;
+      console.error = (...args: unknown[]) => errs.push(args.join(" "));
+      try {
+        await runBundleVerify(bundlePath, {});
+      } finally {
+        console.error = origErr;
+      }
+      expect(errs.join("\n")).toContain("WARNING: BUNDLE VERIFIED SELF-CONSISTENTLY ONLY");
+    });
+
+    it("no warning banner in JSON mode", async () => {
+      const { runBundleVerify } = await import("../src/commands/bundle-verify.js");
+      const bundlePath = createTestBundleZip(tmpDir);
+      const errs: string[] = [];
+      const logs: string[] = [];
+      const origErr = console.error;
+      const origLog = console.log;
+      console.error = (...args: unknown[]) => errs.push(args.join(" "));
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+      try {
+        await runBundleVerify(bundlePath, { json: true });
+      } finally {
+        console.error = origErr;
+        console.log = origLog;
+      }
+      expect(errs.join("\n")).not.toContain("WARNING:");
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.trust_anchored).toBe(false);
+    });
+
+    it("loads trust anchor from --trusted-key-ids file", async () => {
+      const { runBundleVerify } = await import("../src/commands/bundle-verify.js");
+      const bundlePath = createTestBundleZip(tmpDir);
+      const zip = new AdmZip(bundlePath);
+      const pubEntry = zip
+        .getEntries()
+        .find((e) => e.entryName.startsWith("public_keys/") && e.entryName.endsWith(".pub"))!;
+      const keyId = pubEntry.entryName.slice("public_keys/".length, -4);
+      const anchorFile = join(tmpDir, "anchor.txt");
+      writeFileSync(anchorFile, `# trusted operator keys\n${keyId}\n`);
+
+      const errs: string[] = [];
+      const logs: string[] = [];
+      const origErr = console.error;
+      const origLog = console.log;
+      console.error = (...args: unknown[]) => errs.push(args.join(" "));
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+      try {
+        await runBundleVerify(bundlePath, { json: true, trustedKeyIds: anchorFile });
+      } finally {
+        console.error = origErr;
+        console.log = origLog;
+      }
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.valid).toBe(true);
+      expect(parsed.trust_anchored).toBe(true);
+      expect(errs.join("\n")).toContain("Loaded trust anchor: 1 key_id(s)");
+      // Path must NOT appear in the log line (CodeQL clear-text-logging hygiene).
+      expect(errs.join("\n")).not.toContain(anchorFile);
+    });
+
+    it("env var SANNA_TRUSTED_KEY_IDS picked up when flag absent", async () => {
+      const { runBundleVerify } = await import("../src/commands/bundle-verify.js");
+      const bundlePath = createTestBundleZip(tmpDir);
+      const zip = new AdmZip(bundlePath);
+      const pubEntry = zip
+        .getEntries()
+        .find((e) => e.entryName.startsWith("public_keys/") && e.entryName.endsWith(".pub"))!;
+      const keyId = pubEntry.entryName.slice("public_keys/".length, -4);
+      const anchorFile = join(tmpDir, "env-anchor.txt");
+      writeFileSync(anchorFile, `${keyId}\n`);
+
+      const prev = process.env.SANNA_TRUSTED_KEY_IDS;
+      process.env.SANNA_TRUSTED_KEY_IDS = anchorFile;
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.join(" "));
+      try {
+        await runBundleVerify(bundlePath, { json: true });
+      } finally {
+        console.log = origLog;
+        if (prev === undefined) delete process.env.SANNA_TRUSTED_KEY_IDS;
+        else process.env.SANNA_TRUSTED_KEY_IDS = prev;
+      }
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.trust_anchored).toBe(true);
+    });
+
+    it("malformed anchor file: line-numbered error", async () => {
+      const { runBundleVerify } = await import("../src/commands/bundle-verify.js");
+      const bundlePath = createTestBundleZip(tmpDir);
+      const anchorFile = join(tmpDir, "bad-anchor.txt");
+      writeFileSync(anchorFile, "# header\nnotahex\n");
+      const errs: string[] = [];
+      const origErr = console.error;
+      process.exitCode = 0;
+      console.error = (...args: unknown[]) => errs.push(args.join(" "));
+      try {
+        await runBundleVerify(bundlePath, { json: true, trustedKeyIds: anchorFile });
+      } finally {
+        console.error = origErr;
+      }
+      expect(errs.join("\n")).toMatch(/:2:.*not a 64-hex key_id/);
+      expect(process.exitCode).toBe(1);
+      process.exitCode = 0;
+    });
+
+    it("empty anchor file: rejects", async () => {
+      const { runBundleVerify } = await import("../src/commands/bundle-verify.js");
+      const bundlePath = createTestBundleZip(tmpDir);
+      const anchorFile = join(tmpDir, "empty-anchor.txt");
+      writeFileSync(anchorFile, "# only comments\n\n");
+      const errs: string[] = [];
+      const origErr = console.error;
+      process.exitCode = 0;
+      console.error = (...args: unknown[]) => errs.push(args.join(" "));
+      try {
+        await runBundleVerify(bundlePath, { json: true, trustedKeyIds: anchorFile });
+      } finally {
+        console.error = origErr;
+      }
+      expect(errs.join("\n")).toContain("empty after stripping comments");
       expect(process.exitCode).toBe(1);
       process.exitCode = 0;
     });

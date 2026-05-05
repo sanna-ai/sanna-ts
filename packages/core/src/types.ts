@@ -390,6 +390,7 @@ export interface BundleVerificationResult {
   checks: BundleCheck[];
   receipt_summary: Record<string, unknown> | null;
   errors: string[];
+  trust_anchored: boolean;
 }
 
 export interface CreateBundleOptions {
