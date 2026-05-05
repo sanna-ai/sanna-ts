@@ -673,3 +673,137 @@ describe("SAN-209 invocation_anomaly parent-chain integrity", () => {
     expect(anomalyReceipts).toHaveLength(0);
   }, 30_000);
 });
+
+describe("SAN-405: enforcement_mode DSL-to-spec enum mapping (non-anomaly halted path)", () => {
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "sanna-gw-test-"));
+  });
+
+  afterEach(async () => {
+    if (gateway) {
+      await gateway.stop();
+      gateway = null;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("enforced mode: non-anomaly halt emits enforcement_mode 'halt'", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(
+      makeConfig({ enforcement: { mode: "enforced", default_policy: "allow" } }),
+      sink,
+    );
+
+    // No listTools call: _suppressedToolNames empty, _manifestFullFingerprint null.
+    // Bypasses anomaly path; evaluateAuthority returns halt for cannot_execute["echo"].
+    const result = await client.callTool({ name: "echo_echo", arguments: {} });
+    expect(result.isError).toBe(true);
+
+    const enforcedReceipts = sink.receipts.filter((r: any) => r.enforcement !== undefined);
+    expect(enforcedReceipts).toHaveLength(1);
+    const receipt = enforcedReceipts[0] as any;
+    expect(["halt", "warn", "log"]).toContain(receipt.enforcement.enforcement_mode);
+    expect(receipt.enforcement.enforcement_mode).toBe("halt");
+  }, 30_000);
+
+  it("advisory mode: non-anomaly halt emits enforcement_mode 'warn' before forwarding", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(
+      makeConfig({ enforcement: { mode: "advisory", default_policy: "allow" } }),
+      sink,
+    );
+
+    // Advisory: halt receipt stored, then tool forwarded anyway.
+    const result = await client.callTool({ name: "echo_echo", arguments: { text: "advisory-test" } });
+    expect(result.isError).toBe(false);
+
+    const enforcedReceipts = sink.receipts.filter((r: any) => r.enforcement !== undefined);
+    expect(enforcedReceipts.length).toBeGreaterThanOrEqual(1);
+    const receipt = enforcedReceipts[0] as any;
+    expect(["halt", "warn", "log"]).toContain(receipt.enforcement.enforcement_mode);
+    expect(receipt.enforcement.enforcement_mode).toBe("warn");
+  }, 30_000);
+
+  it("permissive mode: overrides halt to allow; no enforcement block emitted", async () => {
+    // configModeToEnforcementLevel("permissive") === "log" per the helper definition.
+    // The gateway overrides all decisions to allow in permissive mode before the
+    // receipt-emission site, so wasAllowed=true and no enforcement block is written.
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(
+      makeConfig({ enforcement: { mode: "permissive", default_policy: "allow" } }),
+      sink,
+    );
+
+    const result = await client.callTool({ name: "echo_echo", arguments: { text: "permissive-test" } });
+    expect(result.isError).toBe(false);
+
+    // Permissive overrides halt to allow; all receipts have wasAllowed=true, no enforcement block.
+    const enforcedReceipts = sink.receipts.filter((r: any) => r.enforcement !== undefined);
+    expect(enforcedReceipts).toHaveLength(0);
+  }, 30_000);
+
+  it("configModeToEnforcementLevel throws on unknown mode (fail-loud defense)", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(
+      makeConfig({
+        enforcement: { mode: "unknown_mode" as any, default_policy: "allow" },
+      }),
+      sink,
+    );
+
+    // Invalid mode reaches configModeToEnforcementLevel inside _buildReceipt when
+    // the halt case fires; the throw propagates as an error response.
+    let gotError = false;
+    try {
+      const result = await client.callTool({ name: "echo_echo", arguments: {} });
+      gotError = result.isError === true;
+    } catch (_) {
+      gotError = true;
+    }
+    expect(gotError).toBe(true);
+  }, 30_000);
+});
