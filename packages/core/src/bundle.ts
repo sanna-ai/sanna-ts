@@ -18,7 +18,7 @@ import { resolve, dirname, posix } from "node:path";
 import { tmpdir } from "node:os";
 import yaml from "js-yaml";
 
-import { loadConstitution, verifyConstitutionSignature } from "./constitution.js";
+import { loadConstitution, verifyConstitutionSignature, parseConstitution } from "./constitution.js";
 import { loadPublicKey, getKeyId, exportPublicKeyPem } from "./crypto.js";
 import { verifyReceipt } from "./verifier.js";
 import { computeFingerprints, TOOL_VERSION } from "./receipt.js";
@@ -117,6 +117,7 @@ export function createBundle(opts: CreateBundleOptions): string {
 export function verifyBundle(
   bundlePath: string,
   strict: boolean = true,
+  trustedKeyIds: Set<string> | null = null,
 ): BundleVerificationResult {
   if (!existsSync(bundlePath)) {
     throw new Error(`Bundle not found: ${bundlePath}`);
@@ -125,6 +126,7 @@ export function verifyBundle(
   const checks: BundleCheck[] = [];
   const errors: string[] = [];
   let receiptSummary: Record<string, unknown> | null = null;
+  let trustAnchored = false;
 
   // Open zip
   let zip: AdmZip;
@@ -136,6 +138,7 @@ export function verifyBundle(
       checks: [{ name: "Bundle structure", passed: false, detail: "Not a valid zip file" }],
       receipt_summary: null,
       errors: ["Not a valid zip file"],
+      trust_anchored: false,
     };
   }
 
@@ -146,7 +149,7 @@ export function verifyBundle(
   if (memberNames.length > MAX_BUNDLE_MEMBERS) {
     const detail = `Too many members: ${memberNames.length} (max ${MAX_BUNDLE_MEMBERS})`;
     checks.push({ name: "Bundle structure", passed: false, detail });
-    return { valid: false, checks, receipt_summary: null, errors: [detail] };
+    return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
   }
 
   // Guard: path safety
@@ -154,23 +157,23 @@ export function verifyBundle(
     if (name.startsWith("/") || posix.isAbsolute(name)) {
       const detail = `Zip member has absolute path: '${name}'`;
       checks.push({ name: "Bundle structure", passed: false, detail });
-      return { valid: false, checks, receipt_summary: null, errors: [detail] };
+      return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
     }
     if (name.includes("\\")) {
       const detail = `Zip member contains backslash: '${name}'`;
       checks.push({ name: "Bundle structure", passed: false, detail });
-      return { valid: false, checks, receipt_summary: null, errors: [detail] };
+      return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
     }
     if (name.includes("..")) {
       const detail = `Unsafe path in bundle: '${name}'`;
       checks.push({ name: "Bundle structure", passed: false, detail });
-      return { valid: false, checks, receipt_summary: null, errors: [detail] };
+      return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
     }
     // Check expected members
     if (!EXPECTED_MEMBERS.has(name) && !(name.startsWith(EXPECTED_PREFIX) && name.endsWith(".pub"))) {
       const detail = `Unexpected member in bundle: '${name}'`;
       checks.push({ name: "Bundle structure", passed: false, detail });
-      return { valid: false, checks, receipt_summary: null, errors: [detail] };
+      return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
     }
   }
 
@@ -179,7 +182,7 @@ export function verifyBundle(
     if (entry.header.size > MAX_BUNDLE_FILE_SIZE) {
       const detail = `Member '${entry.entryName}' too large: ${entry.header.size} bytes (max ${MAX_BUNDLE_FILE_SIZE})`;
       checks.push({ name: "Bundle structure", passed: false, detail });
-      return { valid: false, checks, receipt_summary: null, errors: [detail] };
+      return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
     }
   }
 
@@ -193,7 +196,7 @@ export function verifyBundle(
   if (missing.length > 0) {
     const detail = `Missing: ${missing.join(", ")}`;
     checks.push({ name: "Bundle structure", passed: false, detail });
-    return { valid: false, checks, receipt_summary: null, errors: [detail] };
+    return { valid: false, checks, receipt_summary: null, errors: [detail], trust_anchored: false };
   }
   checks.push({ name: "Bundle structure", passed: true, detail: "All required files present" });
 
@@ -204,7 +207,7 @@ export function verifyBundle(
     receipt = JSON.parse(receiptEntry.getData().toString("utf-8")) as Record<string, unknown>;
   } catch (e) {
     checks.push({ name: "Receipt schema", passed: false, detail: `Invalid JSON: ${e}` });
-    return { valid: false, checks, receipt_summary: null, errors: [`Invalid JSON: ${e}`] };
+    return { valid: false, checks, receipt_summary: null, errors: [`Invalid JSON: ${e}`], trust_anchored: false };
   }
 
   // Build receipt summary
@@ -272,7 +275,6 @@ export function verifyBundle(
 
   try {
     const constData = yaml.load(constitutionText) as Record<string, unknown>;
-    const { parseConstitution } = require("./constitution.js");
     constitution = parseConstitution(constData);
   } catch (e) {
     checks.push({ name: "Constitution signature", passed: false, detail: `Failed to load: ${e}` });
@@ -362,12 +364,63 @@ export function verifyBundle(
     errors.push("Receipt is not signed");
   }
 
-  // Step 7: Approval verification (simplified — no approval block in v1.0 TS)
+  // Step 7: Approval verification (simplified -- no approval block in v1.0 TS)
   checks.push({
     name: "Approval verification",
     passed: true,
     detail: "Constitution has no approval block (not required)",
   });
+
+  // Step 8: Trust anchor (SAN-403)
+  // Constitution is single-sig only; collect its key_id if present.
+  // Approval signature key_ids are NOT checked against the trust anchor
+  // (known limitation; matches Python SDK, tracked under SAN-403 PR 1).
+  const constitutionKeyIds: string[] = [];
+  if (constitution) {
+    const constSig = constitution.provenance?.signature;
+    if (constSig?.key_id) {
+      constitutionKeyIds.push(constSig.key_id);
+    }
+  }
+
+  if (trustedKeyIds !== null) {
+    trustAnchored = true;
+    const untrusted: Array<[string, string]> = [];
+    if (receiptKeyId && !trustedKeyIds.has(receiptKeyId)) {
+      untrusted.push(["receipt", receiptKeyId]);
+    }
+    for (const cid of constitutionKeyIds) {
+      if (!trustedKeyIds.has(cid)) {
+        untrusted.push(["constitution", cid]);
+      }
+    }
+    if (untrusted.length > 0) {
+      const detail = untrusted
+        .map(([role, kid]) => `${role} key_id ${kid.slice(0, 16)}... not in trust anchor`)
+        .join("; ");
+      checks.push({ name: "Trust anchor", passed: false, detail });
+      for (const [role, kid] of untrusted) {
+        errors.push(`Trust anchor: ${role} key_id ${kid.slice(0, 16)}... not in trust anchor`);
+      }
+    } else {
+      const nConst = constitutionKeyIds.length;
+      const nAnchor = trustedKeyIds.size;
+      checks.push({
+        name: "Trust anchor",
+        passed: true,
+        detail: `Receipt + ${nConst} constitution key_id(s) all in trust anchor (${nAnchor} keys total)`,
+      });
+    }
+  } else {
+    checks.push({
+      name: "Trust anchor",
+      passed: true,
+      detail:
+        "WARNING: no trust anchor supplied; verdict is self-consistent only. " +
+        "Pass trustedKeyIds or set SANNA_TRUSTED_KEY_IDS for an authoritative verdict.",
+    });
+    // trustAnchored stays false (initialized above)
+  }
 
   // Compute verdict
   const valid = strict
@@ -376,7 +429,7 @@ export function verifyBundle(
         .filter((c) => c.name === "Bundle structure" || c.name === "Receipt fingerprint")
         .every((c) => c.passed);
 
-  return { valid, checks, receipt_summary: receiptSummary, errors };
+  return { valid, checks, receipt_summary: receiptSummary, errors, trust_anchored: trustAnchored };
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────

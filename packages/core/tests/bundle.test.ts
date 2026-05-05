@@ -285,4 +285,104 @@ describe("Bundle", () => {
       expect(result.checks.length).toBeGreaterThan(0);
     });
   });
+
+  describe("trust anchor (SAN-403)", () => {
+    let bundlePath: string;
+    let receiptKeyId: string;
+
+    // Build a fully-verified bundle: save constitution, reload to get stable policy_hash,
+    // then create receipt. The outer beforeEach uses the in-memory policy_hash which
+    // can differ from the YAML-serialized one; the reload step avoids that mismatch.
+    function makeTrustAnchorBundle(dir: string, suffix: string = ""): { bundlePath: string; receiptKeyId: string } {
+      const kp = generateKeypair(`ta-${suffix}`);
+      const signedConst = signConstitution(makeConstitution(), kp.privateKey, "ta@sanna.dev");
+      const constPath = join(dir, `ta${suffix}-constitution.yaml`);
+      saveConstitution(signedConst, constPath);
+      const reloadedConst = loadConstitution(constPath);
+
+      const pubPath = join(dir, `ta${suffix}.pub`);
+      writeFileSync(pubPath, exportPublicKeyPem(kp.publicKey));
+
+      const receipt = generateReceipt({
+        correlation_id: `ta-test${suffix}`,
+        inputs: { query: "test" },
+        outputs: { response: "result" },
+        checks: [{ check_id: "C1", name: "Test", passed: true, severity: "info", evidence: null }],
+        constitution_ref: {
+          document_id: `${signedConst.identity.agent_name}/1.0`,
+          policy_hash: reloadedConst.policy_hash,
+        },
+      });
+      signReceipt(receipt as unknown as Record<string, unknown>, kp.privateKey, "ta@sanna.dev");
+      const rcptPath = join(dir, `ta${suffix}-receipt.json`);
+      writeFileSync(rcptPath, JSON.stringify(receipt, null, 2));
+
+      const bPath = join(dir, `ta${suffix}.bundle.zip`);
+      createBundle({ receiptPath: rcptPath, constitutionPath: constPath, publicKeyPath: pubPath, outputPath: bPath });
+
+      const zip = new AdmZip(bPath);
+      const pubEntry = zip.getEntries().find(
+        (e) => e.entryName.startsWith("public_keys/") && e.entryName.endsWith(".pub")
+      )!;
+      const keyId = pubEntry.entryName.slice("public_keys/".length, -4);
+      return { bundlePath: bPath, receiptKeyId: keyId };
+    }
+
+    beforeEach(() => {
+      const r = makeTrustAnchorBundle(tmpDir);
+      bundlePath = r.bundlePath;
+      receiptKeyId = r.receiptKeyId;
+    });
+
+    it("no anchor: succeeds with self-consistent signal", () => {
+      const result = verifyBundle(bundlePath);
+      expect(result.valid).toBe(true);
+      expect(result.trust_anchored).toBe(false);
+      const anchorCheck = result.checks.find((c) => c.name === "Trust anchor");
+      expect(anchorCheck?.passed).toBe(true);
+      expect(anchorCheck?.detail).toContain("WARNING");
+    });
+
+    it("anchor with matching key_id: succeeds + trust_anchored true", () => {
+      const result = verifyBundle(bundlePath, true, new Set([receiptKeyId]));
+      expect(result.valid).toBe(true);
+      expect(result.trust_anchored).toBe(true);
+      const anchorCheck = result.checks.find((c) => c.name === "Trust anchor");
+      expect(anchorCheck?.passed).toBe(true);
+      expect(anchorCheck?.detail).toContain("all in trust anchor");
+    });
+
+    it("anchor excluding key_id: fails", () => {
+      const otherKey = "0".repeat(64);
+      const result = verifyBundle(bundlePath, true, new Set([otherKey]));
+      expect(result.valid).toBe(false);
+      expect(result.trust_anchored).toBe(true);
+      const anchorCheck = result.checks.find((c) => c.name === "Trust anchor");
+      expect(anchorCheck?.passed).toBe(false);
+      expect(anchorCheck?.detail).toContain("not in trust anchor");
+    });
+
+    it("empty anchor set: fails closed (trust nothing)", () => {
+      const result = verifyBundle(bundlePath, true, new Set());
+      expect(result.valid).toBe(false);
+      expect(result.trust_anchored).toBe(true);
+      const anchorCheck = result.checks.find((c) => c.name === "Trust anchor");
+      expect(anchorCheck?.passed).toBe(false);
+    });
+
+    it("forged bundle: caught by anchor", () => {
+      // Build attacker bundle using same safe pattern (save-then-reload policy_hash).
+      const { bundlePath: forgedBundlePath } = makeTrustAnchorBundle(tmpDir, "forged");
+
+      // Without anchor: self-consistent forge passes (the bug we are closing)
+      const noAnchor = verifyBundle(forgedBundlePath);
+      expect(noAnchor.valid).toBe(true);
+      expect(noAnchor.trust_anchored).toBe(false);
+
+      // With anchor that lists only the original (genuine) key_id: forgery is caught
+      const withAnchor = verifyBundle(forgedBundlePath, true, new Set([receiptKeyId]));
+      expect(withAnchor.valid).toBe(false);
+      expect(withAnchor.trust_anchored).toBe(true);
+    });
+  });
 });

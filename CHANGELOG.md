@@ -1,3 +1,36 @@
+## [Unreleased] -- 2026-05-05 (SAN-403)
+
+### Added
+- `verifyBundle(..., trustedKeyIds)` parameter (Set<string> | null). When
+  non-null, the bundle's receipt key_id and every constitution signature
+  key_id must appear in the supplied set or verification fails closed.
+  Empty Set is the explicit "trust nothing" signal.
+- `--trusted-key-ids <FILE>` CLI flag and `SANNA_TRUSTED_KEY_IDS` env var
+  on `sanna bundle-verify`. File format: newline-separated 64-hex key_ids,
+  lowercase, '#' comments allowed. Malformed lines reject with line number;
+  empty file rejects.
+- `BundleVerificationResult.trust_anchored` boolean indicating whether the
+  verdict was evaluated against an external anchor (regardless of pass/fail).
+- Stderr warning banner when no anchor is supplied and --json is not used
+  (and `trust_anchored: false` in --json output). Operators see that the
+  verdict is self-consistent only -- the bundle internally agrees but no
+  external authority confirms the key_id's identity claim.
+- Verification steps display updated from "(7-step)" to "(8-step)".
+
+### Security
+- Closes the bundle-forge attack vector at the verifier level (cross-SDK
+  parity with sanna-repo PR merged at 912a058). An adversary who re-signs a
+  genuine receipt + constitution with their own key and repackages the bundle
+  would, prior to this change, get a `valid: true` verdict. With a trust
+  anchor, the forgery is now caught. Without an anchor, the warning makes
+  the limitation visible. Approval signature key_ids are NOT yet checked
+  against the trust anchor (known limitation; matches Python).
+
+### Tickets
+- SAN-403 PR 2 of 3 (this entry; TypeScript SDK). PR 1 (Python SDK in
+  sanna-repo) merged. PR 3 (sanna-protocol cross-SDK forged-bundle fixture
+  + spec/SECURITY.md updates) follows.
+
 ## [Unreleased] -- 2026-05-05 (SAN-405)
 
 ### Fixed
