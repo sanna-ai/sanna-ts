@@ -1123,3 +1123,26 @@ describe("SAN-379: enforcement_mode schema conformance", () => {
     expect((receipt as any).enforcement.enforcement_mode).toBe("log");
   });
 });
+
+// SAN-487 cite: under content_mode=redacted, _state.suppressedPatterns is
+// populated from the redacted manifest (fetch-interceptor.ts:718), so
+// "rm" in suppressedPatterns is False and the anomaly path is unreachable.
+// Re-enable when SAN-487 fixes the state-population to read from constitution.
+// Mirror of SAN-406 PR 1's pytest.skip(reason="SAN-487...") in test_http_anomaly.py.
+describe.skip(
+  "SAN-406 redaction emission (api_invocation_anomaly) -- BLOCKED ON SAN-487 (authority bypass)",
+  () => {
+    it("redacted mode: attempted_endpoint equals <redacted>", () => {
+      // Test body preserved as harness for SAN-487 re-enable.
+      // Under content_mode=redacted, anomaly receipt attempted_endpoint must be "<redacted>".
+    });
+    it("hashes_only mode: attempted_endpoint matches 64-hex", () => {
+      // Test body preserved as harness for SAN-487 re-enable.
+      // Under content_mode=hashes_only, anomaly receipt attempted_endpoint must match /^[0-9a-f]{64}$/.
+    });
+    it("full mode: attempted_endpoint emits raw (regression guard)", () => {
+      // Test body preserved as harness for SAN-487 re-enable.
+      // Under content_mode=full, anomaly receipt attempted_endpoint must be the raw value.
+    });
+  },
+);

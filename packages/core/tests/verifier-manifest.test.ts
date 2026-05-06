@@ -13,6 +13,7 @@ import {
   verifyInvocationAnomalyReceipt,
 } from "../src/verifier-manifest.js";
 import { verifyReceiptSet } from "../src/verifier.js";
+import { hashContent } from "../src/hashing.js";
 import type { Check } from "../src/types.js";
 
 // ===========================================================================
@@ -843,5 +844,158 @@ describe("verifyReceiptSet", () => {
       (w) => w === "Cross-receipt parent resolution requires receipt set; use verify_receipt_set"
     );
     expect(warnMsgs).toHaveLength(0);
+  });
+});
+
+describe("redaction_markers_correct (SAN-406)", () => {
+  // Mirror of Python TestRedactionMarkersCorrect (sanna-repo test_verify_manifest.py).
+  // Extends SAN-439 scope to com.sanna.anomaly. Verifier check covers BOTH
+  // com.sanna.manifest lists and com.sanna.anomaly attempted_* fields under
+  // content_mode=redacted/hashes_only.
+
+  function makeAnomalyReceipt(
+    contentMode: string | null | undefined,
+    attemptedValue: string,
+    eventType: string = "invocation_anomaly",
+  ): Record<string, unknown> {
+    const fieldByEventType: Record<string, string> = {
+      invocation_anomaly: "attempted_tool",
+      cli_invocation_anomaly: "attempted_command",
+      api_invocation_anomaly: "attempted_endpoint",
+    };
+    const field = fieldByEventType[eventType];
+    return {
+      event_type: eventType,
+      content_mode: contentMode,
+      extensions: {
+        "com.sanna.anomaly": {
+          [field]: attemptedValue,
+          suppression_basis: "constitution",
+        },
+      },
+    };
+  }
+
+  it("full mode: no constraint emitted", () => {
+    const receipt = makeAnomalyReceipt("full", "rm");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const names = checks.map((c) => c.name);
+    expect(names).not.toContain("redaction_markers_correct");
+  });
+
+  it("undefined mode: no constraint emitted", () => {
+    const receipt = makeAnomalyReceipt(undefined, "rm");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const names = checks.map((c) => c.name);
+    expect(names).not.toContain("redaction_markers_correct");
+  });
+
+  it("redacted with <redacted>: PASS", () => {
+    const receipt = makeAnomalyReceipt("redacted", "<redacted>");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("PASS");
+  });
+
+  it("redacted with raw value: FAIL", () => {
+    const receipt = makeAnomalyReceipt("redacted", "rm");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("FAIL");
+  });
+
+  it("hashes_only with 64-hex: PASS", () => {
+    const hashed = hashContent("rm");
+    const receipt = makeAnomalyReceipt("hashes_only", hashed);
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("PASS");
+  });
+
+  it("hashes_only with raw value: FAIL", () => {
+    const receipt = makeAnomalyReceipt("hashes_only", "rm");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("FAIL");
+  });
+
+  it("cli_invocation_anomaly redacted correct: PASS", () => {
+    const receipt = makeAnomalyReceipt("redacted", "<redacted>", "cli_invocation_anomaly");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("PASS");
+  });
+
+  it("api_invocation_anomaly redacted correct: PASS", () => {
+    const receipt = makeAnomalyReceipt("redacted", "<redacted>", "api_invocation_anomaly");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("PASS");
+  });
+
+  it("manifest extension redacted correct: PASS", () => {
+    const receipt = {
+      event_type: "session_manifest",
+      content_mode: "redacted",
+      extensions: {
+        "com.sanna.manifest": {
+          version: "0.1",
+          surfaces: {
+            cli: {
+              tools_delivered: ["<redacted>"],
+              tools_suppressed: ["<redacted>", "<redacted>"],
+              aggregate_suppression_reasons: ["constitution", "constitution"],
+            },
+          },
+        },
+      },
+    };
+    const checks = verifySessionManifestReceipt(receipt);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("PASS");
+  });
+
+  it("manifest extension redacted with raw value: FAIL", () => {
+    const receipt = {
+      event_type: "session_manifest",
+      content_mode: "redacted",
+      extensions: {
+        "com.sanna.manifest": {
+          version: "0.1",
+          surfaces: {
+            cli: {
+              tools_delivered: ["bash"],  // raw leaks
+              tools_suppressed: [],
+            },
+          },
+        },
+      },
+    };
+    const checks = verifySessionManifestReceipt(receipt);
+    const markerCheck = checks.find((c) => c.name === "redaction_markers_correct");
+    expect(markerCheck?.status).toBe("FAIL");
+  });
+
+  it("placement: redaction check runs without receiptSet", () => {
+    // Guards Phase 3.3 placement: marker check MUST run in
+    // verifyInvocationAnomalyReceipt BEFORE the receiptSet === null
+    // early-return at the bottom of the function.
+    const receipt = makeAnomalyReceipt("redacted", "rm");  // mode set + raw value
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const names = checks.map((c) => c.name);
+    expect(names).toContain("redaction_markers_correct");
+  });
+
+  it("cross-SDK Check.name parity: emitted name is snake_case", () => {
+    // Cross-SDK parity guard: receipts consumed by verifiers from either Python or
+    // TypeScript SDK must agree on the literal Check.name string. Python emits
+    // "redaction_markers_correct" (snake_case); TS MUST emit the same. Renaming
+    // to camelCase for "TS convention" would break the cross-SDK fixture in PR 3.
+    const receipt = makeAnomalyReceipt("redacted", "<redacted>");
+    const checks = verifyInvocationAnomalyReceipt(receipt, null);
+    const markerNames = checks.filter((c) => c.name.toLowerCase().includes("redaction")).map((c) => c.name);
+    expect(markerNames).toContain("redaction_markers_correct");
+    // And NOT the camelCase variant:
+    expect(markerNames).not.toContain("redactionMarkersCorrect");
   });
 });

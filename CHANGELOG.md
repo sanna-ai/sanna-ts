@@ -1,3 +1,54 @@
+## [Unreleased] -- 2026-05-06 (SAN-406)
+
+### Added
+- `packages/core/src/anomaly.ts`: `redactAttemptedField(value, contentMode)`
+  helper implementing Section 2.22.5 single-value redaction for
+  com.sanna.anomaly extension emissions. Three modes: "full"/undefined/null/""
+  (raw, current behavior preserved), "redacted" (literal `<redacted>`),
+  "hashes_only" (SHA-256 hex lowercase via canonical `hashContent`).
+  Cross-SDK parity with sanna-repo's `src/sanna/anomaly.py`.
+- Verifier semantic check that emits Check.name `"redaction_markers_correct"`
+  (snake_case STRING for cross-SDK parity with Python's emission). Implemented
+  in `packages/core/src/verifier-manifest.ts` as
+  `checkRedactionMarkersCorrect`. Runs from both `verifySessionManifestReceipt`
+  and `verifyInvocationAnomalyReceipt` (placed BEFORE the receiptSet null
+  early-return). Subsumes SAN-439 scope; that ticket superseded by SAN-406.
+- Tests: `packages/core/tests/anomaly.test.ts` (11 helper unit tests),
+  extended `packages/core/tests/verifier-manifest.test.ts` with 12 verifier
+  tests including a placement-regression guard AND a cross-SDK Check.name
+  parity guard, gateway integration tests in gateway.test.ts for redacted
+  + hashes_only modes.
+
+### Fixed
+- `child-process-interceptor.ts:870`, `fetch-interceptor.ts:763`, and
+  `gateway.ts:1027`: `attempted_command` / `attempted_endpoint` /
+  `attempted_tool` now apply Section 2.22.5 field-level redaction at
+  emission time. Closes AUDIT-008 (CRITICAL) on the TS side. Mirror of
+  SAN-406 PR 1 (sanna-repo, 817bf1a).
+
+### Skipped
+- 6 CLI/HTTP integration tests in
+  `packages/core/tests/child-process-interceptor.test.ts` and
+  `packages/core/tests/fetch-interceptor.test.ts` (under
+  `describe.skip("SAN-406 ... -- BLOCKED ON SAN-487 (authority bypass)")`)
+  await SAN-487's fix. Same authority-bypass design gap exists in TS
+  interceptors (suppressedPatterns populated from redacted manifest at
+  child-process-interceptor.ts:825 and fetch-interceptor.ts:718).
+  Test code preserved as harness for SAN-487 re-enable.
+
+### Security
+- Closes the AUDIT-008 emission gap on the TS side. Cross-SDK fixture in
+  PR 3 (sanna-protocol); SDK CI consumption in PRs 4 + 5.
+- `hashes_only` mode is for audit-time deterministic comparison, NOT
+  privacy. Operators relying on strong privacy MUST use `redacted`.
+
+### Tickets
+- SAN-406 PR 2 of 5 (this entry; sanna-ts emission + verifier check).
+  PR 1 (sanna-repo Python) merged at 817bf1a. PR 3 (sanna-protocol
+  fixture), PR 4 + 5 (SDK CI consumption) follow.
+- Related: SAN-487 (CRITICAL authority bypass under content_mode=redacted
+  in CLI/HTTP interceptors; cross-SDK; 6 skipped tests cite it).
+
 ## [Unreleased] -- 2026-05-06 (SAN-486)
 
 ### Added

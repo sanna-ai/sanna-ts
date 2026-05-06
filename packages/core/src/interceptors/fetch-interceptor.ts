@@ -15,6 +15,7 @@ import { hashObj, hashContent, hashBytes, EMPTY_HASH } from "../hashing.js";
 import { generateReceipt, signReceipt } from "../receipt.js";
 import { generateManifest } from "../manifest.js";
 import { evaluateApiAuthority, checkApiInvariants } from "./api-authority.js";
+import { redactAttemptedField } from "../anomaly.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -759,7 +760,7 @@ function _emitHttpInvocationAnomaly(endpointPattern: string): void {
     invariantsScope: "authority_only",
     extensions: {
       "com.sanna.anomaly": {
-        attempted_endpoint: endpointPattern,
+        attempted_endpoint: redactAttemptedField(endpointPattern, opts.contentMode),
         suppression_basis: "session_manifest",
       },
     },
