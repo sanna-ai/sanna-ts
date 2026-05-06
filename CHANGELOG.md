@@ -1,3 +1,63 @@
+## [Unreleased] -- 2026-05-06 (SAN-487)
+
+### Fixed
+- **CRITICAL authority bypass** (TS side): mirror of sanna-repo PR 1 fix
+  (commit 2c02f76). Under `content_mode=redacted` (or `hashes_only`), CLI
+  and HTTP interceptors populated `_state.suppressedPatterns` from the
+  manifest's `patterns_suppressed` list -- which had been redacted to
+  `["<redacted>"]`. Operators who configured redacted/hashes_only mode for
+  privacy got ZERO ENFORCEMENT.
+- The fix mirrors the gateway's pattern (sanna-repo `server.py:2079-2111`
+  sources `_suppressedToolNames` directly from constitution policies). New
+  helper `getSuppressedPatterns(constitution, surface)` returns the raw
+  `Set<string>` of suppressed patterns from constitution data, bypassing
+  `generateManifest()` entirely. Both CLI and HTTP interceptors now use
+  this helper for enforcement state population.
+
+### Added
+- `packages/core/src/manifest.ts` exports
+  `getSuppressedPatterns(constitution: Constitution, surface: "cli" | "http"): Set<string>`.
+  Mirror of Python's `sanna.manifest.get_suppressed_patterns` (SAN-487 PR 1
+  @ 2c02f76); cross-SDK behavioral parity guaranteed by mirrored authority
+  semantics. Helper does NOT take contentMode -- enforcement state is
+  contentMode-independent (the entire point of this fix).
+- 9 unit tests in `packages/core/tests/manifest.test.ts` (new top-level
+  describe `"getSuppressedPatterns (SAN-487)"`) mirroring the Python suite.
+  Reuses existing file-local helpers `bareConstitution` / `makeCliCommand` /
+  `makeCliPermissions` / `makeApiEndpoint` / `makeApiPermissions`. Includes
+  a regression guard asserting `getSuppressedPatterns.length === 2` (no
+  contentMode parameter).
+- 6 integration tests in `child-process-interceptor.test.ts` and
+  `fetch-interceptor.test.ts` with REAL bodies (previously empty
+  placeholders under `describe.skip` with SAN-487 cite from SAN-406 PR 2).
+  Each test uses `patchChildProcess({...contentMode: "<mode>"})` or
+  `patchFetch({...contentMode: "<mode>"})` to set up the interceptor,
+  triggers the suppressed pattern, finds the anomaly receipt, and asserts
+  on `ext.attempted_command` / `ext.attempted_endpoint`:
+  - redacted mode -> `"<redacted>"`
+  - hashes_only mode -> matches `/^[0-9a-f]{64}$/`
+  - full mode -> raw value (regression guard)
+
+### Changed
+- Removed `describe.skip(...)` from `child-process-interceptor.test.ts`
+  (line 1396) and `fetch-interceptor.test.ts` (line 1132). The 6 tests now
+  execute. Updated the SAN-487 cite comment block above each describe to
+  a post-fix note explaining the SAN-406 + SAN-487 storyline.
+
+### Tickets
+- SAN-487 PR 2 of 2 (this entry; sanna-ts mirror; CLOSES SAN-487). PR 1
+  (sanna-repo) merged at 2c02f76 (2026-05-06). With this PR, SAN-487
+  closes; the customer-facing content_mode=redacted/hashes_only toggle
+  now works end-to-end (emission + enforcement) across both SDKs.
+
+### Cross-SDK byte-equal verification
+Helper unit tests assert identical Set membership for identical inputs;
+combined with PR 1's Python-side helper unit tests, both SDKs produce
+identical suppression sets for the same constitution. Integration tests
+prove the end-to-end path: SAN-406 emission redaction (PR 2 / 77acc44) +
+SAN-487 enforcement state fix (this PR) work together to deliver the
+documented content_mode behavior.
+
 ## [Unreleased] -- 2026-05-06 (SAN-406)
 
 ### Added

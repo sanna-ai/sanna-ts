@@ -2,6 +2,7 @@
 
 export {
   generateManifest,
+  getSuppressedPatterns,
   MANIFEST_VERSION,
   VALID_SUPPRESSION_REASONS,
   SUPPRESSION_REASON_CANNOT_EXECUTE,
