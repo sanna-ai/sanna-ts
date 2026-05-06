@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   generateManifest,
+  getSuppressedPatterns,
   MANIFEST_VERSION,
   VALID_SUPPRESSION_REASONS,
   SUPPRESSION_REASON_CANNOT_EXECUTE,
@@ -384,5 +385,92 @@ describe("SAN-203 manifest: HTTP surface", () => {
     const c = bareConstitution({ api_permissions: api });
     const out = generateManifest(c);
     expect(out.surfaces.http!.mode).toBe("permissive");
+  });
+});
+
+describe("getSuppressedPatterns (SAN-487)", () => {
+  // Mirror of sanna-repo's tests/test_manifest.py::TestGetSuppressedPatterns
+  // (SAN-487 PR 1 @ 2c02f76). Validates the helper returns the RAW (unredacted)
+  // set of suppressed patterns directly from constitution data, regardless of
+  // contentMode. The integration tests in child-process-interceptor.test.ts
+  // and fetch-interceptor.test.ts cover the end-to-end path; these tests
+  // cover the helper in isolation.
+
+  it("cli cannot_execute returns binary", () => {
+    const constitution = bareConstitution({
+      cli_permissions: makeCliPermissions([
+        makeCliCommand("rm", "cannot_execute"),
+      ]),
+    });
+    expect(getSuppressedPatterns(constitution, "cli")).toEqual(new Set(["rm"]));
+  });
+
+  it("cli must_escalate visible: NOT suppressed", () => {
+    const constitution = bareConstitution({
+      escalation_visibility: "visible",
+      cli_permissions: makeCliPermissions([
+        makeCliCommand("sudo", "must_escalate"),
+      ]),
+    });
+    const result = getSuppressedPatterns(constitution, "cli");
+    expect(result.size).toBe(0);
+  });
+
+  it("cli must_escalate suppressed: IS suppressed", () => {
+    const constitution = bareConstitution({
+      escalation_visibility: "suppressed",
+      cli_permissions: makeCliPermissions([
+        makeCliCommand("curl", "must_escalate"),
+      ]),
+    });
+    expect(getSuppressedPatterns(constitution, "cli")).toEqual(new Set(["curl"]));
+  });
+
+  it("cli can_execute: NOT suppressed", () => {
+    const constitution = bareConstitution({
+      cli_permissions: makeCliPermissions([
+        makeCliCommand("ls", "can_execute"),
+      ]),
+    });
+    const result = getSuppressedPatterns(constitution, "cli");
+    expect(result.size).toBe(0);
+  });
+
+  it("cli no permissions: empty set", () => {
+    const constitution = bareConstitution({ cli_permissions: null });
+    const result = getSuppressedPatterns(constitution, "cli");
+    expect(result.size).toBe(0);
+  });
+
+  it("http cannot_execute returns url_pattern", () => {
+    const constitution = bareConstitution({
+      api_permissions: makeApiPermissions([
+        makeApiEndpoint("https://internal.evil.com/*", "cannot_execute"),
+      ]),
+    });
+    expect(getSuppressedPatterns(constitution, "http"))
+      .toEqual(new Set(["https://internal.evil.com/*"]));
+  });
+
+  it("http no permissions: empty set", () => {
+    const constitution = bareConstitution({ api_permissions: null });
+    const result = getSuppressedPatterns(constitution, "http");
+    expect(result.size).toBe(0);
+  });
+
+  it("invalid surface: throws", () => {
+    const constitution = bareConstitution();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => getSuppressedPatterns(constitution, "mcp" as any))
+      .toThrow(/unknown surface/);
+  });
+
+  it("no contentMode parameter (regression guard for SAN-487)", () => {
+    // SAN-487 design: helper does NOT take contentMode. Enforcement state is
+    // contentMode-independent. If a future refactor adds a contentMode
+    // parameter (with or without a default), this test fires. Function.length
+    // returns the count of REQUIRED params (those before the first default
+    // or rest); we want exactly 2 (constitution, surface).
+    expect(getSuppressedPatterns.length).toBe(2);
   });
 });

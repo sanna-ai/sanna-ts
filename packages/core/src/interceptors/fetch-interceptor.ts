@@ -13,7 +13,7 @@ import { resolve4, resolve6 } from "node:dns/promises";
 import type { ReceiptSink, Constitution, Receipt } from "../types.js";
 import { hashObj, hashContent, hashBytes, EMPTY_HASH } from "../hashing.js";
 import { generateReceipt, signReceipt } from "../receipt.js";
-import { generateManifest } from "../manifest.js";
+import { generateManifest, getSuppressedPatterns } from "../manifest.js";
 import { evaluateApiAuthority, checkApiInvariants } from "./api-authority.js";
 import { redactAttemptedField } from "../anomaly.js";
 
@@ -677,6 +677,12 @@ function _emitHttpSessionManifest(): void {
   const signingKey = _state.options.signingKey;
   const agentId = _state.options.agentId;
 
+  // SAN-487: source enforcement state directly from constitution. Do NOT read
+  // from manifestExt -- that's subject to contentMode redaction. Population
+  // happens BEFORE generateManifest so the cache is populated even if
+  // manifest generation fails.
+  _state.suppressedPatterns = getSuppressedPatterns(constitution, "http");
+
   let manifestExt: Record<string, unknown>;
   let statusOverride: "PASS" | "FAIL" = "PASS";
   try {
@@ -711,13 +717,8 @@ function _emitHttpSessionManifest(): void {
     agent_identity: { agent_session_id: _agentSessionId },
   }) as Record<string, unknown>;
 
-  // SAN-397: capture fingerprint and suppressed patterns for anomaly emission
+  // SAN-397: capture fingerprint for anomaly emission (suppressedPatterns set above)
   _state.manifestFullFingerprint = receipt.full_fingerprint as string;
-  {
-    const surfaces = (manifestExt as Record<string, unknown>).surfaces as Record<string, unknown> | undefined;
-    const httpSurf = surfaces?.http as Record<string, unknown> | undefined;
-    _state.suppressedPatterns = new Set((httpSurf?.patterns_suppressed as string[] | undefined) ?? []);
-  }
 
   let finalReceipt: Record<string, unknown> = receipt;
   if (signingKey) {

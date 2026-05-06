@@ -278,3 +278,80 @@ function _generateHttpSurface(constitution: Constitution): HttpSurface {
     mode: ap.mode,
   };
 }
+
+/**
+ * SAN-487: return the RAW (unredacted) set of suppressed patterns from
+ * constitution data, for use as interceptor enforcement state.
+ *
+ * MUST be called by CLI/HTTP interceptors instead of reading
+ * `patterns_suppressed` from `generateManifest(...)` output -- because that
+ * output is subject to `content_mode` redaction (under redacted mode,
+ * `patterns_suppressed` becomes `["<redacted>"]`, breaking enforcement).
+ *
+ * Mirrors sanna-repo's `sanna.manifest.get_suppressed_patterns` (SAN-487 PR 1
+ * @ 2c02f76) with the same authority semantics. Cross-SDK behavioral parity:
+ * given the same constitution, both helpers MUST return identical sets.
+ *
+ * Suppression rules (same as `_generateCliSurface` / `_generateHttpSurface`):
+ * - `cannot_execute` authority -> suppressed
+ * - `must_escalate` authority + `escalation_visibility === "suppressed"` -> suppressed
+ * - any other case -> NOT suppressed
+ *
+ * @param constitution The constitution with cli_permissions / api_permissions /
+ *   authority_boundaries.
+ * @param surface One of "cli" or "http".
+ * @returns `Set<string>` of pattern strings (binaries for cli, URL patterns
+ *   for http) that are suppressed under the constitution's authority rules.
+ */
+export function getSuppressedPatterns(
+  constitution: Constitution,
+  surface: "cli" | "http",
+): Set<string> {
+  const escalationVisibility =
+    constitution.authority_boundaries?.escalation_visibility ?? "visible";
+
+  const suppressed = new Set<string>();
+
+  if (surface === "cli") {
+    const cp = constitution.cli_permissions;
+    if (cp === null) {
+      return suppressed;
+    }
+    for (const cmd of cp.commands) {
+      if (cmd.authority === "cannot_execute") {
+        suppressed.add(cmd.binary);
+      } else if (
+        cmd.authority === "must_escalate" &&
+        escalationVisibility === "suppressed"
+      ) {
+        suppressed.add(cmd.binary);
+      }
+    }
+    return suppressed;
+  }
+
+  if (surface === "http") {
+    const ap = constitution.api_permissions;
+    if (ap === null) {
+      return suppressed;
+    }
+    for (const ep of ap.endpoints) {
+      if (ep.authority === "cannot_execute") {
+        suppressed.add(ep.url_pattern);
+      } else if (
+        ep.authority === "must_escalate" &&
+        escalationVisibility === "suppressed"
+      ) {
+        suppressed.add(ep.url_pattern);
+      }
+    }
+    return suppressed;
+  }
+
+  // Defensive: TypeScript's "cli" | "http" union prevents this at compile
+  // time, but throw at runtime if a string was passed at a type-erased
+  // boundary (e.g., from JSON).
+  throw new Error(
+    `unknown surface ${JSON.stringify(surface)}; expected "cli" or "http"`,
+  );
+}

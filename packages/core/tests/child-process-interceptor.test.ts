@@ -1388,25 +1388,88 @@ describe("SAN-379: enforcement_mode schema conformance", () => {
   });
 });
 
-// SAN-487 cite: under content_mode=redacted, _state.suppressedPatterns is
-// populated from the redacted manifest (child-process-interceptor.ts:825), so
-// "rm" in suppressedPatterns is False and the anomaly path is unreachable.
-// Re-enable when SAN-487 fixes the state-population to read from constitution.
-// Mirror of SAN-406 PR 1's pytest.skip(reason="SAN-487...") in test_cli_anomaly.py.
-describe.skip(
+// SAN-406 redaction emission (cli_invocation_anomaly): unblocked by SAN-487
+// PR 2 (this commit). Verifies under content_mode=redacted/hashes_only the
+// anomaly receipt's attempted_command field is correctly redacted (per
+// SAN-406 PR 2 emission redaction at child-process-interceptor.ts:869) AND
+// enforcement actually fires under those modes (per SAN-487 PR 2 design fix
+// at child-process-interceptor.ts:826). Together, the customer-facing
+// content_mode toggle now works end-to-end.
+describe(
   "SAN-406 redaction emission (cli_invocation_anomaly) -- BLOCKED ON SAN-487 (authority bypass)",
   () => {
-    it("redacted mode: attempted_command equals <redacted>", () => {
-      // Test body preserved as harness for SAN-487 re-enable.
-      // Under content_mode=redacted, anomaly receipt attempted_command must be "<redacted>".
+    let tempDir: string;
+    let anomalyConstitutionPath: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync("/tmp/sanna-test-san487-cli-");
+      anomalyConstitutionPath = path.join(tempDir, "cli-anomaly.yaml");
+      fs.writeFileSync(anomalyConstitutionPath, CLI_ANOMALY_YAML);
     });
-    it("hashes_only mode: attempted_command matches 64-hex", () => {
-      // Test body preserved as harness for SAN-487 re-enable.
-      // Under content_mode=hashes_only, anomaly receipt attempted_command must match /^[0-9a-f]{64}$/.
+
+    afterEach(() => {
+      unpatchChildProcess();
+      fs.rmSync(tempDir, { recursive: true, force: true });
     });
-    it("full mode: attempted_command emits raw (regression guard)", () => {
-      // Test body preserved as harness for SAN-487 re-enable.
-      // Under content_mode=full, anomaly receipt attempted_command must be the raw value.
+
+    it("redacted mode: attempted_command equals <redacted>", async () => {
+      const sink = makeSink();
+      await patchChildProcess({
+        constitutionPath: anomalyConstitutionPath,
+        sink,
+        agentId: "test-agent",
+        contentMode: "redacted",
+      });
+
+      const cp = require_("node:child_process");
+      try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+      const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+      expect(anomaly).toBeDefined();
+      const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+      expect(ext).toBeDefined();
+      expect(ext.attempted_command).toBe("<redacted>");
+      expect(ext.suppression_basis).toBe("session_manifest");
+    });
+
+    it("hashes_only mode: attempted_command matches 64-hex", async () => {
+      const sink = makeSink();
+      await patchChildProcess({
+        constitutionPath: anomalyConstitutionPath,
+        sink,
+        agentId: "test-agent",
+        contentMode: "hashes_only",
+      });
+
+      const cp = require_("node:child_process");
+      try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+      const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+      expect(anomaly).toBeDefined();
+      const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+      expect(ext).toBeDefined();
+      expect(ext.attempted_command).toMatch(/^[0-9a-f]{64}$/);
+      expect(ext.suppression_basis).toBe("session_manifest");
+    });
+
+    it("full mode: attempted_command emits raw (regression guard)", async () => {
+      const sink = makeSink();
+      await patchChildProcess({
+        constitutionPath: anomalyConstitutionPath,
+        sink,
+        agentId: "test-agent",
+        contentMode: "full",
+      });
+
+      const cp = require_("node:child_process");
+      try { cp.execSync("curl https://example.com"); } catch { /* expected */ }
+
+      const anomaly = sink.receipts.find((r: any) => r.event_type === "cli_invocation_anomaly");
+      expect(anomaly).toBeDefined();
+      const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+      expect(ext).toBeDefined();
+      expect(ext.attempted_command).toBe("curl");
+      expect(ext.suppression_basis).toBe("session_manifest");
     });
   },
 );

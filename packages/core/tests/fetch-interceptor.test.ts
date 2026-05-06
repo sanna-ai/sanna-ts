@@ -1124,25 +1124,94 @@ describe("SAN-379: enforcement_mode schema conformance", () => {
   });
 });
 
-// SAN-487 cite: under content_mode=redacted, _state.suppressedPatterns is
-// populated from the redacted manifest (fetch-interceptor.ts:718), so
-// "rm" in suppressedPatterns is False and the anomaly path is unreachable.
-// Re-enable when SAN-487 fixes the state-population to read from constitution.
-// Mirror of SAN-406 PR 1's pytest.skip(reason="SAN-487...") in test_http_anomaly.py.
-describe.skip(
+// SAN-406 redaction emission (api_invocation_anomaly): unblocked by SAN-487
+// PR 2 (this commit). Verifies under content_mode=redacted/hashes_only the
+// anomaly receipt's attempted_endpoint field is correctly redacted (per
+// SAN-406 PR 2 emission redaction at fetch-interceptor.ts:762) AND
+// enforcement actually fires under those modes (per SAN-487 PR 2 design fix
+// at fetch-interceptor.ts:719). Together, the customer-facing
+// content_mode toggle now works end-to-end.
+describe(
   "SAN-406 redaction emission (api_invocation_anomaly) -- BLOCKED ON SAN-487 (authority bypass)",
   () => {
-    it("redacted mode: attempted_endpoint equals <redacted>", () => {
-      // Test body preserved as harness for SAN-487 re-enable.
-      // Under content_mode=redacted, anomaly receipt attempted_endpoint must be "<redacted>".
+    let tempDir: string;
+    let anomalyConstitutionPath: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync("/tmp/sanna-test-san487-http-");
+      anomalyConstitutionPath = path.join(tempDir, "http-anomaly.yaml");
+      fs.writeFileSync(anomalyConstitutionPath, HTTP_ANOMALY_YAML);
     });
-    it("hashes_only mode: attempted_endpoint matches 64-hex", () => {
-      // Test body preserved as harness for SAN-487 re-enable.
-      // Under content_mode=hashes_only, anomaly receipt attempted_endpoint must match /^[0-9a-f]{64}$/.
+
+    afterEach(() => {
+      unpatchFetch();
+      fs.rmSync(tempDir, { recursive: true, force: true });
     });
-    it("full mode: attempted_endpoint emits raw (regression guard)", () => {
-      // Test body preserved as harness for SAN-487 re-enable.
-      // Under content_mode=full, anomaly receipt attempted_endpoint must be the raw value.
+
+    it("redacted mode: attempted_endpoint equals <redacted>", async () => {
+      const sink = makeSink();
+      const mock = createMockFetch(200);
+      globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+      await patchFetch({
+        constitutionPath: anomalyConstitutionPath,
+        sink,
+        agentId: "test-agent",
+        contentMode: "redacted",
+      });
+
+      try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+      const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+      expect(anomaly).toBeDefined();
+      const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+      expect(ext).toBeDefined();
+      expect(ext.attempted_endpoint).toBe("<redacted>");
+      expect(ext.suppression_basis).toBe("session_manifest");
+    });
+
+    it("hashes_only mode: attempted_endpoint matches 64-hex", async () => {
+      const sink = makeSink();
+      const mock = createMockFetch(200);
+      globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+      await patchFetch({
+        constitutionPath: anomalyConstitutionPath,
+        sink,
+        agentId: "test-agent",
+        contentMode: "hashes_only",
+      });
+
+      try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+      const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+      expect(anomaly).toBeDefined();
+      const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+      expect(ext).toBeDefined();
+      expect(ext.attempted_endpoint).toMatch(/^[0-9a-f]{64}$/);
+      expect(ext.suppression_basis).toBe("session_manifest");
+    });
+
+    it("full mode: attempted_endpoint emits raw (regression guard)", async () => {
+      const sink = makeSink();
+      const mock = createMockFetch(200);
+      globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+
+      await patchFetch({
+        constitutionPath: anomalyConstitutionPath,
+        sink,
+        agentId: "test-agent",
+        contentMode: "full",
+      });
+
+      try { await fetch("https://api.example.com/admin/users"); } catch { /* expected */ }
+
+      const anomaly = sink.receipts.find((r: any) => r.event_type === "api_invocation_anomaly");
+      expect(anomaly).toBeDefined();
+      const ext = (anomaly as any).extensions?.["com.sanna.anomaly"];
+      expect(ext).toBeDefined();
+      expect(ext.attempted_endpoint).toBe("https://api.example.com/admin/*");
+      expect(ext.suppression_basis).toBe("session_manifest");
     });
   },
 );
