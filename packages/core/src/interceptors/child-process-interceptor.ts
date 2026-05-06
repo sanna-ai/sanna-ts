@@ -16,6 +16,7 @@ import { hashObj, hashContent, EMPTY_HASH } from "../hashing.js";
 import { generateReceipt, signReceipt } from "../receipt.js";
 import { generateManifest } from "../manifest.js";
 import { evaluateCliAuthority, checkCliInvariants } from "./cli-authority.js";
+import { redactAttemptedField } from "../anomaly.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -866,7 +867,7 @@ function _emitCliInvocationAnomaly(binary: string): void {
     invariantsScope: "authority_only",
     extensions: {
       "com.sanna.anomaly": {
-        attempted_command: binary,
+        attempted_command: redactAttemptedField(binary, opts.contentMode),
         suppression_basis: "session_manifest",
       },
     },

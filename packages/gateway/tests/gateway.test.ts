@@ -807,3 +807,73 @@ describe("SAN-405: enforcement_mode DSL-to-spec enum mapping (non-anomaly halted
     expect(gotError).toBe(true);
   }, 30_000);
 });
+
+describe("SAN-406 redaction emission (invocation_anomaly attempted_tool)", () => {
+  const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "sanna-gw-san406-"));
+  });
+
+  afterEach(async () => {
+    if (gateway) {
+      await gateway.stop();
+      gateway = null;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("content_mode=redacted: attempted_tool is <redacted>", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(
+      makeConfig({ receipts: { content_mode: "redacted" } }),
+      sink,
+    );
+
+    await client.listTools();
+    await client.callTool({ name: "echo_echo", arguments: { message: "test" } });
+
+    const anomalyReceipts = sink.receipts.filter((r: any) => r.event_type === "invocation_anomaly");
+    expect(anomalyReceipts).toHaveLength(1);
+    const anomaly = anomalyReceipts[0] as any;
+    expect(anomaly.extensions["com.sanna.anomaly"].attempted_tool).toBe("<redacted>");
+  }, 30_000);
+
+  it("content_mode=hashes_only: attempted_tool matches 64-hex SHA-256", async () => {
+    writeFileSync(
+      join(tmpDir, "constitution.yaml"),
+      makeConstitutionYaml({
+        authority_boundaries: {
+          cannot_execute: ["echo"],
+          must_escalate: [],
+          can_execute: [],
+          default_escalation: "log",
+        },
+      }),
+    );
+    const sink = new CaptureSink();
+    const { client } = await createTestClientWithSink(
+      makeConfig({ receipts: { content_mode: "hashes_only" } }),
+      sink,
+    );
+
+    await client.listTools();
+    await client.callTool({ name: "echo_echo", arguments: { message: "test" } });
+
+    const anomalyReceipts = sink.receipts.filter((r: any) => r.event_type === "invocation_anomaly");
+    expect(anomalyReceipts).toHaveLength(1);
+    const anomaly = anomalyReceipts[0] as any;
+    expect(SHA256_HEX_RE.test(anomaly.extensions["com.sanna.anomaly"].attempted_tool)).toBe(true);
+  }, 30_000);
+});

@@ -28,6 +28,8 @@ export const VALID_ANOMALY_EVENT_TYPES = new Set([
   "invocation_anomaly", "cli_invocation_anomaly", "api_invocation_anomaly",
 ]);
 
+const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
+
 const CROSS_RECEIPT_SKIP_MSG =
   "Cross-receipt parent resolution requires receipt set; use verify_receipt_set";
 
@@ -123,6 +125,85 @@ function checkEnforcementSurface(
     status: "PASS",
     message: `enforcement_surface='${enforcementSurface}' is consistent with surfaces`,
   }];
+}
+
+// -- Helper: SAN-406 redaction markers check --
+
+function isValidRedactionMarker(value: unknown, contentMode: string): boolean {
+  if (typeof value !== "string") return false;
+  if (contentMode === "redacted") return value === "<redacted>";
+  if (contentMode === "hashes_only") return SHA256_HEX_RE.test(value);
+  return true;  // "full" / null / undefined: any value passes (defensive).
+}
+
+function checkRedactionMarkersCorrect(receipt: Record<string, unknown>): Check[] {
+  const checks: Check[] = [];
+  const contentMode = receipt.content_mode as string | null | undefined;
+
+  // Empty/null/full: no constraint to enforce.
+  if (!contentMode || contentMode === "full") {
+    return checks;
+  }
+
+  const extensions = (receipt.extensions ?? {}) as Record<string, unknown>;
+
+  // com.sanna.manifest: list fields collapse to all-redacted markers.
+  const manifestExt = extensions["com.sanna.manifest"] as Record<string, unknown> | undefined;
+  if (manifestExt && typeof manifestExt === "object") {
+    const surfaces = (manifestExt.surfaces ?? {}) as Record<string, unknown>;
+    for (const [surfaceName, surfaceVal] of Object.entries(surfaces)) {
+      if (!surfaceVal || typeof surfaceVal !== "object") continue;
+      const surface = surfaceVal as Record<string, unknown>;
+      for (const listField of [
+        "tools_delivered", "tools_suppressed",
+        "patterns_delivered", "patterns_suppressed",
+      ]) {
+        const values = surface[listField];
+        if (!Array.isArray(values)) continue;
+        for (const v of values) {
+          if (!isValidRedactionMarker(v, contentMode)) {
+            checks.push({
+              name: "redaction_markers_correct",  // SNAKE_CASE for cross-SDK parity with Python
+              status: "FAIL",
+              message: (
+                `manifest surface '${surfaceName}' ${listField} contains ` +
+                `${JSON.stringify(v)} which is not a valid ${contentMode} marker`
+              ),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // com.sanna.anomaly: single attempted_* field per surface variant.
+  const anomalyExt = extensions["com.sanna.anomaly"] as Record<string, unknown> | undefined;
+  if (anomalyExt && typeof anomalyExt === "object") {
+    const eventType = (receipt.event_type as string | undefined) ?? "";
+    const fieldName = ANOMALY_CAPABILITY_FIELD[eventType];
+    if (fieldName && fieldName in anomalyExt) {
+      const v = anomalyExt[fieldName];
+      if (typeof v === "string" && !isValidRedactionMarker(v, contentMode)) {
+        checks.push({
+          name: "redaction_markers_correct",  // SNAKE_CASE for cross-SDK parity with Python
+          status: "FAIL",
+          message: (
+            `anomaly extension ${fieldName} value ${JSON.stringify(v)} is ` +
+            `not a valid ${contentMode} marker`
+          ),
+        });
+      }
+    }
+  }
+
+  if (checks.length === 0) {
+    checks.push({
+      name: "redaction_markers_correct",  // SNAKE_CASE for cross-SDK parity with Python
+      status: "PASS",
+      message: `all redaction markers conform to content_mode=${contentMode}`,
+    });
+  }
+  return checks;
 }
 
 // -- Public: 9 checks for session_manifest receipts --
@@ -316,6 +397,9 @@ export function verifySessionManifestReceipt(receipt: Record<string, unknown>): 
   // Check 9: manifest_enforcement_surface_consistent
   checks.push(...checkEnforcementSurface(receipt, surfaces));
 
+  // SAN-406: redaction markers check (covers com.sanna.manifest list fields).
+  checks.push(...checkRedactionMarkersCorrect(receipt));
+
   return checks;
 }
 
@@ -343,6 +427,9 @@ export function verifyInvocationAnomalyReceipt(
     status: "PASS",
     message: `event_type '${eventType}' is in valid set`,
   });
+
+  // SAN-406: redaction markers check (independent of receiptSet; runs early).
+  checks.push(...checkRedactionMarkersCorrect(receipt));
 
   // Checks 11 and 12 require a receipt set
   if (receiptSet === null) {

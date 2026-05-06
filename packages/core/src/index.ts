@@ -192,6 +192,8 @@ export {
 } from "./sinks/index.js";
 export type { CloudHTTPSinkOptions } from "./sinks/index.js";
 
+export { redactAttemptedField } from "./anomaly.js";
+
 export { patchChildProcess, unpatchChildProcess } from "./interceptors/index.js";
 export type { PatchOptions } from "./interceptors/index.js";
 export { evaluateCliAuthority, checkCliInvariants } from "./interceptors/cli-authority.js";

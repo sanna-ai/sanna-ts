@@ -25,6 +25,7 @@ import {
   ReceiptStore,
   LocalSQLiteSink,
   generateManifest,
+  redactAttemptedField,
 } from "@sanna-ai/core";
 import type {
   Constitution,
@@ -1023,7 +1024,7 @@ export class SannaGateway {
       },
       extensions: {
         "com.sanna.anomaly": {
-          attempted_tool: attemptedTool,
+          attempted_tool: redactAttemptedField(attemptedTool, this._contentMode),
           suppression_basis: "session_manifest",
         },
       },
