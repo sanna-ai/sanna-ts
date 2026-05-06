@@ -1,3 +1,31 @@
+## [Unreleased] -- 2026-05-06 (SAN-486)
+
+### Added
+- `packages/core/tests/bundle-trust-anchor-vectors.test.ts`: consumes the cross-SDK
+  fixture `spec/fixtures/bundle-trust-vectors.json` (added to sanna-protocol in
+  SAN-403 PR 3 of 3 at commit 6795979). Asserts every vector's expected `valid`
+  and `trust_anchored` against the actual `verifyBundle()` verdict. 11 tests:
+  well-formedness, bidirectional vector-ID-set contract, 2 bundle internal-
+  reference sanity assertions, and 7 parametrized vector cases. Top-level
+  fixture read serves as the hard fixture-presence canary (vitest reports
+  collection error if submodule uninitialized).
+
+### Changed
+- Bumped `spec` submodule pin from baa517f to 6795979. The bump pulls in
+  sanna-protocol commits SAN-381 (R1 aggregate_suppression_reasons schema
+  rule), SAN-383 (A1' cv<10 forbids agent_identity schema rule), SAN-372
+  (archive escalated.json regression guard), SAN-373 (spec Section 2.17.2 ->
+  2.18.4 cross-reference), in addition to SAN-403 PR 3. Runtime already
+  implements these rules; the bump is a schema-resync, not a behavior change.
+  Verified by full test suite green post-bump with no new failures vs
+  pre-bump baseline.
+
+### Tickets
+- SAN-486 (this entry). Closes the "run by both SDK CIs" acceptance criterion
+  of SAN-403 on the TypeScript side. SAN-485 closed the Python side at
+  sanna-repo commit eda4dda. With both SDK consumption tickets merged,
+  SAN-403 closes.
+
 ## [Unreleased] -- 2026-05-05 (SAN-403)
 
 ### Added
