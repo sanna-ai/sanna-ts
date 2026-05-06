@@ -1,6 +1,53 @@
 ## [Unreleased] -- 2026-05-06 (SAN-406)
 
 ### Added
+- `packages/core/tests/redaction-vectors.test.ts`: consumes the cross-SDK
+  fixture `spec/fixtures/redaction-vectors.json` (added to sanna-protocol in
+  SAN-406 PR 3 at commit 95e87e5; consumed by sanna-repo in PR 4 at
+  0809568). 26 tests: 1 fixture-well-formedness check, 1 bidirectional
+  vector-ID-set contract canary, 9 parametrized helper_vectors
+  (`redactAttemptedField(input, mode) === expected`), 6 parametrized
+  verifier_vectors (NEGATIVE cases: raw value under redacted/hashes_only ->
+  marker check FAILS), 9 parametrized derived positive verifier cases (each
+  non-full helper_vector's `expected` value -> marker check PASS; full mode
+  -> no marker check emitted). Top-level fixture read via readFileSync
+  serves as the hard fixture-presence canary (vitest collection-error
+  semantics); equivalent to PR 4's separate test_fixture_file_exists.
+- These tests are INDEPENDENT of SAN-487. They call the helper + verifier
+  DIRECTLY (no interceptor traversal). The 6 end-to-end interceptor tests
+  skipped under describe.skip("SAN-406 redaction emission ... -- BLOCKED ON
+  SAN-487 (authority bypass)") in PR 2 remain skipped.
+
+### Changed
+- Bumped `spec` submodule pin from 6795979 to 95e87e5 (sanna-protocol PR
+  SAN-406 PR 3). Phase 0 scope sanity check verifies bump pulls in EXACTLY
+  ONE commit (the new fixture). No operational schema copy in sanna-ts
+  (verifier loads schema directly from submodule); submodule bump is the
+  only sync operation needed.
+
+### Tickets
+- SAN-406 PR 5 of 5 (this entry; sanna-ts fixture consumption; CLOSES
+  SAN-406). PR 1 (sanna-repo emission + verifier) merged at 817bf1a.
+  PR 2 (sanna-ts mirror) merged at 77acc44. PR 3 (sanna-protocol fixture)
+  merged at 95e87e5. PR 4 (sanna-repo fixture consumption) merged at
+  0809568. With this PR, SAN-406 closes; SAN-439 closes as superseded.
+- Related: SAN-487 (CRITICAL authority bypass; orthogonal to this PR's
+  scope). The new redaction-vectors.test.ts tests are INDEPENDENT of
+  SAN-487; the 6 end-to-end tests skipped under SAN-487 cite remain
+  skipped.
+
+### Cross-SDK byte-equal verification
+PR 4 (Python) verified `redact_attempted_field("rm", "hashes_only")` produces
+`58466ebdd352f801198118e294e38715f864985fd87977f348bfcd7db62e7c76`. PR 5
+(this; TypeScript) calls `redactAttemptedField("rm", "hashes_only")` and
+asserts the SAME hex via the helper-cli-hashes-only test. Both SDKs
+produce identical output -> cross-SDK byte-equal contract proven.
+
+---
+
+## [Unreleased] -- 2026-05-06 (SAN-406)
+
+### Added
 - `packages/core/src/anomaly.ts`: `redactAttemptedField(value, contentMode)`
   helper implementing Section 2.22.5 single-value redaction for
   com.sanna.anomaly extension emissions. Three modes: "full"/undefined/null/""
