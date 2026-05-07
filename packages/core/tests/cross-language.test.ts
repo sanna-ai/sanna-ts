@@ -343,11 +343,11 @@ describe("v1.3 cross-language parity (SAN-213 AC 13)", () => {
 
 describe("CRITICAL: v1.5 cross-language byte-parity (SAN-370)", () => {
   // Expected stored full_fingerprints from Python-generated v1.5 fixtures (cv=10)
-  // Pre-flight target verified by Opus against post-Prompt-A sanna-protocol fixtures.
+  // post-SAN-404 sanna-protocol fixtures (cc2602a)
   const V15_EXPECTED: Record<string, string> = {
-    "escalated":         "e60f944ffcdd5614fd9d0b3f51aa11aefa0eeae04c18adbd36445eea9d8483e8",
-    "fail-halted":       "206bda5957b4abc4cb14e6003932bf68754db2f9675e8f2e21345146267da9af",
-    "full-featured":     "e0794986270598e7ce7e4473cde77c35bd93c4e8fb15b8d1c8328893dd775a0f",
+    "escalated":         "1429ced5d5e64fd829dbc6b2b9023843c979bd59d83fae9a18df75b1a605e762",
+    "fail-halted":       "c16c61dcc69f66d627aa91e1945da55821ff0916367e5f7d36ffab85f7586575",
+    "full-featured":     "ab03f340ab48796bfca8e7a05f25566a74e46dd9e125a98e5803f649ba3e7908",
     "pass-single-check": "c400915f81d9e7305e70a71ab810eef3703f90491e501addf3851f74eb03f29d",
   };
 

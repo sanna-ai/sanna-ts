@@ -11,14 +11,16 @@ import {
   TOOL_VERSION,
   TOOL_NAME,
 } from "../src/receipt.js";
-import { loadPrivateKey, loadPublicKey, getKeyId } from "../src/crypto.js";
+import { generateKeypair, getKeyId } from "../src/crypto.js";
 import { verify } from "../src/crypto.js";
 import { canonicalize, hashContent } from "../src/hashing.js";
 
 const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
 const golden = JSON.parse(readFileSync(resolve(FIXTURES, "golden-hashes.json"), "utf-8"));
-const privKey = loadPrivateKey(resolve(FIXTURES, "keypairs/test-author.key"));
-const pubKey = loadPublicKey(resolve(FIXTURES, "keypairs/test-author.pub"));
+// SAN-404: test-author private key was rotated and removed from spec; using ephemeral keypair to verify SDK sign/verify roundtrip works.
+const _kp = generateKeypair();
+const privKey = _kp.privateKey;
+const pubKey  = _kp.publicKey;
 
 // ── generateReceipt ──────────────────────────────────────────────────
 
