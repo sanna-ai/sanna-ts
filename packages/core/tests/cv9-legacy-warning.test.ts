@@ -11,11 +11,14 @@ import { readFileSync } from "node:fs";
 
 import { generateReceipt, signReceipt } from "../src/receipt.js";
 import { verifyReceipt } from "../src/verifier.js";
-import { loadPrivateKey, loadPublicKey } from "../src/crypto.js";
+import { generateKeypair } from "../src/crypto.js";
 
 const SPEC_FIXTURES = resolve(__dirname, "../../../spec/fixtures");
-const PRIV = loadPrivateKey(resolve(SPEC_FIXTURES, "keypairs/test-author.key"));
-const PUB = loadPublicKey(resolve(SPEC_FIXTURES, "keypairs/test-author.pub"));
+
+// SAN-404: test-author private key was rotated and removed from spec; using ephemeral keypair to verify SDK sign/verify roundtrip works.
+const _kp = generateKeypair();
+const PRIV = _kp.privateKey;
+const PUB  = _kp.publicKey;
 
 describe("SAN-371: CV9_LEGACY warning on cv=9 verifier output", () => {
   it("cv=9 generated receipt emits exactly one CV9_LEGACY-prefixed warning", () => {

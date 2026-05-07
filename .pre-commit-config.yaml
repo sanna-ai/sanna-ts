@@ -1,0 +1,13 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+        name: Block PEM private keys
+        # SAN-404: packages/core/tests/crypto.test.ts contains a PEM header
+        # literal inside a .toContain() assertion that verifies
+        # exportPrivateKeyPem() returns valid PEM format. The assertion is
+        # correct test code, not a real key. Exclude is scoped to that exact
+        # file; any other tracked file containing PEM private-key markers is
+        # still blocked.
+        exclude: ^packages/core/tests/crypto\.test\.ts$

@@ -1,3 +1,49 @@
+## [Unreleased] -- 2026-05-07 (SAN-404)
+
+### Security
+
+- **Pre-commit hook.** Added `.pre-commit-config.yaml` with
+  `pre-commit/pre-commit-hooks` `detect-private-key` to block any future
+  PEM private key from entering the repo. CI runs the same hook on every
+  pull request via inline `pip install pre-commit` +
+  `pre-commit run --all-files`. The exclude is scoped to exactly
+  `^packages/core/tests/crypto\.test\.ts$` -- the legitimate PEM-format
+  assertion test (around line 37-38) verifying `exportPrivateKeyPem()`
+  returns valid PEM format. No other path is whitelisted; any other
+  tracked file containing PEM markers is still blocked.
+
+### Changed
+
+- Spec submodule pin advanced from `95e87e5` to `cc2602a`. The submodule
+  delta is the SAN-404 sanna-protocol rotation (test-author +
+  test-attacker key rotation, fixture regeneration, pre-commit hook
+  addition) plus the follow-on CI fix. The TypeScript SDK consumes the
+  rotated cross-SDK fixtures (key_ids `a1b0635d...` for test-author and
+  `d610a877...` for test-attacker; old `6edb...3af61` and `02dd...12de6`
+  REVOKED). SDK source is unchanged -- key_ids are read dynamically from
+  `spec/fixtures/golden-hashes.json` and
+  `spec/fixtures/bundle-trust-vectors.json`.
+
+### Fixed
+
+- Five test modules that loaded `spec/fixtures/keypairs/test-author.key`
+  at module scope -- a file deleted by SAN-404 PR 1's forward-only key
+  rotation -- now use an ephemeral keypair via `generateKeypair()`. The
+  cross-SDK pub-key load (`test-author.pub`) is preserved where present;
+  only the private-key load was replaced. Affects crypto.test.ts,
+  receipt.test.ts, verifier.test.ts, receipt-chaining.test.ts, and
+  cv9-legacy-warning.test.ts.
+- `packages/core/tests/cross-language.test.ts:347-352` V15_EXPECTED
+  full_fingerprint pins updated for `escalated`, `fail-halted`, and
+  `full-featured` to match the post-rotation values in
+  `spec/fixtures/golden-hashes.json`. `pass-single-check` is unchanged
+  (no enforcement block; fingerprint stable across rotation).
+
+### Tickets
+
+- SAN-404 (this entry; sanna-ts portion). Companion sanna-protocol PR
+  #34 and sanna-repo PR #59 already merged.
+
 ## [Unreleased] -- 2026-05-06 (SAN-487)
 
 ### Fixed

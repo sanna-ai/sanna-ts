@@ -6,7 +6,6 @@ import {
   generateKeypair,
   sign,
   verify,
-  loadPrivateKey,
   loadPublicKey,
   getKeyId,
   exportPrivateKeyPem,
@@ -77,15 +76,19 @@ describe("sign / verify round-trip", () => {
 
 describe("CRITICAL GATE: cross-language key compatibility", () => {
   const keyDir = resolve(FIXTURES, "keypairs");
-  const privKey = loadPrivateKey(resolve(keyDir, "test-author.key"));
-  const pubKey = loadPublicKey(resolve(keyDir, "test-author.pub"));
+  // SAN-404: test-author private key was rotated and removed from spec; using ephemeral keypair to verify SDK sign/verify roundtrip works.
+  const _kp = generateKeypair();
+  const privKey = _kp.privateKey;
+  const pubKey  = _kp.publicKey;
+  // test-author.pub is still present for cross-language constitution signature verification
+  const specPubKey = loadPublicKey(resolve(keyDir, "test-author.pub"));
 
-  it("loads test-author.key as Ed25519 private key", () => {
+  it("ephemeral keypair is Ed25519 private key", () => {
     expect(privKey.type).toBe("private");
     expect(privKey.asymmetricKeyType).toBe("ed25519");
   });
 
-  it("loads test-author.pub as Ed25519 public key", () => {
+  it("ephemeral keypair public key is Ed25519", () => {
     expect(pubKey.type).toBe("public");
     expect(pubKey.asymmetricKeyType).toBe("ed25519");
   });
@@ -145,7 +148,7 @@ describe("CRITICAL GATE: cross-language key compatibility", () => {
     const sigBytes = Buffer.from(canonicalJson, "utf-8");
 
     // Verify the Python-generated signature with the TypeScript crypto module
-    const isValid = verify(sigBytes, signatureValue, pubKey);
+    const isValid = verify(sigBytes, signatureValue, specPubKey);
     expect(isValid).toBe(true);
   });
 });

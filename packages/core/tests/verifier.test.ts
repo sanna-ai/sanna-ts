@@ -1,14 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { resolve } from "node:path";
-import { readFileSync } from "node:fs";
 import { verifyReceipt } from "../src/verifier.js";
-import { loadPublicKey } from "../src/crypto.js";
+import { generateKeypair } from "../src/crypto.js";
 import { generateReceipt, signReceipt } from "../src/receipt.js";
-import { loadPrivateKey } from "../src/crypto.js";
 
-const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
-const pubKey = loadPublicKey(resolve(FIXTURES, "keypairs/test-author.pub"));
-const privKey = loadPrivateKey(resolve(FIXTURES, "keypairs/test-author.key"));
+// SAN-404: test-author private key was rotated and removed from spec; using ephemeral keypair to verify SDK sign/verify roundtrip works.
+const _kp = generateKeypair();
+const privKey = _kp.privateKey;
+const pubKey  = _kp.publicKey;
 
 // ── Helper: create and sign a valid receipt ──────────────────────────
 
