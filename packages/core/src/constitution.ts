@@ -688,10 +688,20 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
   if (c.authority_boundaries) {
     const ab: Record<string, unknown> = {
       cannot_execute: c.authority_boundaries.cannot_execute,
+      // SAN-490: emit null explicitly for absent optional sub-fields to match
+      // Python's asdict-include-null canonicalization. See spec/fixtures/
+      // constitution-signable-vectors.json for the byte-equal contract.
       must_escalate: c.authority_boundaries.must_escalate.map((r) => {
         const rule: Record<string, unknown> = { condition: r.condition };
-        if (r.target) rule.target = { ...r.target };
-        else rule.target = null;
+        if (r.target) {
+          rule.target = {
+            type: r.target.type,
+            url: r.target.url ?? null,
+            handler: r.target.handler ?? null,
+          };
+        } else {
+          rule.target = null;
+        }
         return rule;
       }),
       can_execute: c.authority_boundaries.can_execute,
@@ -801,6 +811,20 @@ function sanitizeForSigning(obj: unknown): unknown {
     return result;
   }
   return obj;
+}
+
+/**
+ * Compute the canonical signable JSON string for a Constitution.
+ *
+ * This is the exact byte sequence Ed25519-signed by signConstitution(),
+ * exposed for cross-SDK byte-parity testing (SAN-490). Wraps the existing
+ * internal pipeline: constitutionToSignableDict -> sanitizeForSigning ->
+ * canonicalize.
+ */
+export function computeCanonicalSignableJson(constitution: Constitution): string {
+  const signableDict = constitutionToSignableDict(constitution);
+  const sanitized = sanitizeForSigning(signableDict);
+  return canonicalize(sanitized);
 }
 
 /**
