@@ -31,7 +31,7 @@ import { verifyReceipt } from "../src/verifier.js";
 import { computeFingerprints, generateReceipt } from "../src/receipt.js";
 import { loadPublicKey } from "../src/crypto.js";
 import { hashObj } from "../src/hashing.js";
-import { parseConstitution, computeCanonicalSignableJson } from "../src/constitution.js";
+import { parseConstitution, computeCanonicalSignableJson, verifyConstitutionSignature, loadConstitution } from "../src/constitution.js";
 
 const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
 const golden = JSON.parse(
@@ -453,8 +453,48 @@ describe("CRITICAL: cross-SDK signable byte-parity (SAN-490)", () => {
   for (const v of vectorsDoc.vectors) {
     it(`vector "${v.id}": canonical signable bytes match expected`, () => {
       const constitution = parseConstitution(v.input_constitution);
-      const canonical = computeCanonicalSignableJson(constitution);
+      const canonical = computeCanonicalSignableJson(constitution, 1);
       expect(canonical).toBe(v.expected_signable_canonical_json);
     });
   }
+});
+
+// ── cross-SDK signable byte-parity v2 (SAN-492) ──────────────────────
+
+describe("CRITICAL: cross-SDK signable byte-parity v2 (SAN-492)", () => {
+  const vectorsPath = resolve(FIXTURES, "constitution-signable-vectors-v2.json");
+  const vectorsDoc = JSON.parse(readFileSync(vectorsPath, "utf-8")) as {
+    signing_version: number;
+    vectors: Array<{
+      id: string;
+      input_constitution: Record<string, unknown>;
+      expected_signable_canonical_json: string;
+      expected_signable_sha256: string;
+    }>;
+  };
+
+  it("vectors file is signing_version 2", () => {
+    expect(vectorsDoc.signing_version).toBe(2);
+  });
+
+  for (const v of vectorsDoc.vectors) {
+    it(`vector "${v.id}": canonical signable bytes match expected (v2)`, () => {
+      const constitution = parseConstitution(v.input_constitution);
+      const canonical = computeCanonicalSignableJson(constitution, 2);
+      expect(canonical).toBe(v.expected_signable_canonical_json);
+    });
+  }
+});
+
+// ── v1 backwards-compat verification canary (SAN-492) ────────────────
+
+describe("CRITICAL: v1 backwards-compat verification (SAN-492)", () => {
+  it("minimal.yaml (v1-signed) verifies under v1 dispatch", () => {
+    const yamlPath = resolve(FIXTURES, "constitutions/minimal.yaml");
+    const constitution = loadConstitution(yamlPath);
+    expect(constitution.provenance.signature?.scheme).toBe("constitution_sig_v1");
+
+    const publicKey = loadPublicKey(resolve(FIXTURES, "keypairs/test-author.pub"));
+    expect(verifyConstitutionSignature(constitution, publicKey)).toBe(true);
+  });
 });

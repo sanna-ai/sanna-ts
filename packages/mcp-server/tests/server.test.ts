@@ -569,7 +569,7 @@ describe("sanna_verify_constitution", () => {
       expect(data.signature_valid).toBe(true);
       expect(data.agent_name).toBe("test-agent");
       expect(data.content_hash).toBeTruthy();
-      expect(data.signature_details.scheme).toBe("constitution_sig_v1");
+      expect(data.signature_details.scheme).toBe("constitution_sig_v2");
     } finally {
       await cleanup();
     }
