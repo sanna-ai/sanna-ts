@@ -31,6 +31,7 @@ import { verifyReceipt } from "../src/verifier.js";
 import { computeFingerprints, generateReceipt } from "../src/receipt.js";
 import { loadPublicKey } from "../src/crypto.js";
 import { hashObj } from "../src/hashing.js";
+import { parseConstitution, computeCanonicalSignableJson } from "../src/constitution.js";
 
 const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
 const golden = JSON.parse(
@@ -435,4 +436,25 @@ describe("CRITICAL: v1.5 cross-language byte-parity (SAN-370)", () => {
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
   });
+});
+
+// ── cross-SDK signable byte-parity (SAN-490) ─────────────────────────
+
+describe("CRITICAL: cross-SDK signable byte-parity (SAN-490)", () => {
+  const vectorsPath = resolve(FIXTURES, "constitution-signable-vectors.json");
+  const vectorsDoc = JSON.parse(readFileSync(vectorsPath, "utf-8")) as {
+    vectors: Array<{
+      id: string;
+      input_constitution: Record<string, unknown>;
+      expected_signable_canonical_json: string;
+    }>;
+  };
+
+  for (const v of vectorsDoc.vectors) {
+    it(`vector "${v.id}": canonical signable bytes match expected`, () => {
+      const constitution = parseConstitution(v.input_constitution);
+      const canonical = computeCanonicalSignableJson(constitution);
+      expect(canonical).toBe(v.expected_signable_canonical_json);
+    });
+  }
 });

@@ -1,3 +1,52 @@
+## [Unreleased] -- 2026-05-07 (SAN-490)
+
+### Changed
+
+- **Canonical signable form aligned to Python.** `constitutionToSignableDict`
+  at `packages/core/src/constitution.ts:691-696` now emits `null` explicitly
+  for absent optional sub-fields of `must_escalate.target` (`url`, `handler`).
+  The previous object-spread pattern (`{ ...r.target }`) omitted undefined
+  fields entirely, producing canonical bytes that diverged from Python's
+  `dataclasses.asdict()` output. After this change, TS-signed and
+  Python-signed constitutions produce byte-identical canonical signable
+  bytes for the same input.
+- **Spec submodule pin advanced** from `cc2602a` to `3aea629`. The submodule
+  delta is the SAN-490 sanna-protocol portion (cross-SDK byte-equal contract
+  fixture + schema null-acceptance + spec canonical form Section 6.9 / 13.5).
+
+### Added
+
+- Cross-SDK byte-parity regression test in
+  `packages/core/tests/cross-language.test.ts` loading
+  `spec/fixtures/constitution-signable-vectors.json` and asserting byte-equal
+  canonical signable output for all 5 vectors.
+- New public API `computeCanonicalSignableJson(constitution: Constitution): string`
+  exposing the canonical signable bytes pipeline for cross-SDK parity testing.
+  Wraps the existing internal `constitutionToSignableDict` -> `sanitizeForSigning`
+  -> `canonicalize` flow with no behavioral change.
+
+### Notes
+
+- **Save-path output change.** `saveConstitution` at
+  `packages/core/src/constitution.ts:881` consumes `constitutionToSignableDict`,
+  so YAML output for constitutions whose `must_escalate.target` previously
+  omitted `url` or `handler` will now include those fields as explicit
+  `null`. The schema accepts both forms (per `sanna_constitution` >=
+  `"1.0.1"`); existing YAML files at rest are unaffected.
+- **Verification of constitutions previously signed by sanna-ts.** Any
+  constitution previously signed by sanna-ts whose `must_escalate.target`
+  omitted `url` or `handler` was signed over canonical bytes that lacked
+  those fields. After this change, sanna-ts recomputes canonical bytes that
+  include explicit `null`, producing a different signable byte sequence.
+  Such a constitution will not verify against this version of sanna-ts;
+  re-signing produces a verifiable artifact under the aligned form.
+
+### Tickets
+
+- SAN-490 (this entry; sanna-ts portion -- the canonicalization alignment).
+  Companion sanna-repo regression test follows in a separate PR that bumps
+  the spec submodule pin.
+
 ## [Unreleased] -- 2026-05-07 (SAN-404)
 
 ### Security
