@@ -103,6 +103,61 @@ export interface Composition {
   escalation_visibility?: "visible" | "suppressed";
 }
 
+// ── Reasoning Config types (v1.1+, SAN-492) ──────────────────────────
+
+/** Base config for a governance-level reasoning check (spec Section 4.7). */
+export interface GLCCheckConfig {
+  enabled: boolean;
+}
+
+/** Config for minimum-substance reasoning check (GLC-002). */
+export interface GLCMinimumSubstanceConfig extends GLCCheckConfig {
+  min_length: number;
+}
+
+/** Config for no-parroting reasoning check (GLC-003). */
+export interface GLCNoParrotingConfig extends GLCCheckConfig {
+  blocklist: string[];
+}
+
+/**
+ * Config for LLM coherence reasoning check (GLC-005).
+ * score_threshold is stored as a float [0,1] but serialized as integer
+ * basis points (0-10000) when for_signing=true to ensure deterministic JSON.
+ */
+export interface GLCLLMCoherenceConfig extends GLCCheckConfig {
+  enabled_for: string[];
+  timeout_ms: number;
+  score_threshold: number;
+  judge_override: Record<string, unknown> | null;
+}
+
+/** Top-level judge configuration for reasoning evaluation. */
+export interface JudgeConfig {
+  default_provider: string | null;
+  default_model: string | null;
+  cross_provider: boolean;
+}
+
+/** Per-invariant judge override config. */
+export interface InvariantJudgeOverride {
+  provider: string | null;
+  model: string | null;
+  scrutiny: string;
+}
+
+/** Configuration for governance-level reasoning checks (v1.1+, SAN-492). */
+export interface ReasoningConfig {
+  require_justification_for: string[];
+  on_missing_justification: string;
+  on_check_error: string;
+  on_api_error: string;
+  checks: Record<string, GLCCheckConfig | GLCMinimumSubstanceConfig | GLCNoParrotingConfig | GLCLLMCoherenceConfig>;
+  judge?: JudgeConfig | null;
+  evaluate_before_escalation: boolean;
+  auto_deny_on_reasoning_failure: boolean;
+}
+
 export interface Constitution {
   schema_version: string;
   identity: AgentIdentity;
@@ -117,6 +172,8 @@ export interface Constitution {
   api_permissions: ApiPermissions | null;
   trusted_sources: TrustedSources | null;
   composition?: Composition | null;
+  reasoning?: ReasoningConfig | null;
+  version?: string;
 }
 
 // ── CLI Permissions types ────────────────────────────────────────────
@@ -141,6 +198,8 @@ export interface CliInvariant {
 export interface CliPermissions {
   mode: "strict" | "permissive";
   justification_required: boolean;
+  /** Whether to inspect scripts before execution. Default false. Formalized in schema v1.1.0 (SAN-492). */
+  inspect_scripts?: boolean;
   commands: CliCommand[];
   invariants: CliInvariant[];
 }

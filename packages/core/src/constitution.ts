@@ -33,6 +33,12 @@ import type {
   ApiEndpoint,
   ApiInvariant,
   Composition,
+  ReasoningConfig,
+  GLCCheckConfig,
+  GLCMinimumSubstanceConfig,
+  GLCNoParrotingConfig,
+  GLCLLMCoherenceConfig,
+  JudgeConfig,
 } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -531,6 +537,7 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     cliPermissions = {
       mode: (cliPermsData.mode as "strict" | "permissive") ?? "strict",
       justification_required: (cliPermsData.justification_required as boolean) ?? true,
+      inspect_scripts: Boolean(cliPermsData.inspect_scripts ?? false),
       commands,
       invariants: cliInvariants,
     };
@@ -588,6 +595,67 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     };
   }
 
+  // Version (default "1.0")
+  const version = data.version != null ? String(data.version) : "1.0";
+
+  // Reasoning config (v1.1+)
+  let reasoning: ReasoningConfig | null = null;
+  const reasoningData = data.reasoning as Record<string, unknown> | undefined;
+  if (reasoningData && typeof reasoningData === "object") {
+    const checksRaw = (reasoningData.checks as Record<string, Record<string, unknown>>) ?? {};
+    const checks: Record<string, GLCCheckConfig | GLCMinimumSubstanceConfig | GLCNoParrotingConfig | GLCLLMCoherenceConfig> = {};
+    for (const [name, checkData] of Object.entries(checksRaw)) {
+      if (checkData && typeof checkData === "object") {
+        const enabled = Boolean(checkData.enabled ?? true);
+        if ("score_threshold" in checkData || "enabled_for" in checkData) {
+          const c: GLCLLMCoherenceConfig = {
+            enabled,
+            enabled_for: (checkData.enabled_for as string[]) ?? ["must_escalate"],
+            timeout_ms: (checkData.timeout_ms as number) ?? 2000,
+            score_threshold: (checkData.score_threshold as number) ?? 0.6,
+            judge_override: (checkData.judge_override as Record<string, unknown>) ?? null,
+          };
+          checks[name] = c;
+        } else if ("blocklist" in checkData) {
+          const c: GLCNoParrotingConfig = {
+            enabled,
+            blocklist: (checkData.blocklist as string[]) ?? [],
+          };
+          checks[name] = c;
+        } else if ("min_length" in checkData) {
+          const c: GLCMinimumSubstanceConfig = {
+            enabled,
+            min_length: (checkData.min_length as number) ?? 20,
+          };
+          checks[name] = c;
+        } else {
+          checks[name] = { enabled };
+        }
+      }
+    }
+
+    let judge: JudgeConfig | null = null;
+    const judgeData = reasoningData.judge as Record<string, unknown> | undefined;
+    if (judgeData && typeof judgeData === "object") {
+      judge = {
+        default_provider: (judgeData.default_provider as string) ?? null,
+        default_model: (judgeData.default_model as string) ?? null,
+        cross_provider: Boolean(judgeData.cross_provider ?? false),
+      };
+    }
+
+    reasoning = {
+      require_justification_for: (reasoningData.require_justification_for as string[]) ?? ["must_escalate", "cannot_execute"],
+      on_missing_justification: (reasoningData.on_missing_justification as string) ?? "block",
+      on_check_error: (reasoningData.on_check_error as string) ?? "block",
+      on_api_error: (reasoningData.on_api_error as string) ?? "block",
+      checks,
+      judge,
+      evaluate_before_escalation: Boolean(reasoningData.evaluate_before_escalation ?? true),
+      auto_deny_on_reasoning_failure: Boolean(reasoningData.auto_deny_on_reasoning_failure ?? false),
+    };
+  }
+
   return {
     schema_version: schemaVersion,
     identity,
@@ -602,6 +670,8 @@ export function parseConstitution(data: Record<string, unknown>): Constitution {
     api_permissions: apiPermissions,
     trusted_sources: trustedSources,
     composition,
+    version,
+    reasoning,
   };
 }
 
@@ -630,13 +700,8 @@ export function computeFileContentHash(path: string): string {
 
 // ── Signature verification ───────────────────────────────────────────
 
-/**
- * Build the signable dict for a constitution, matching Python's
- * `constitution_to_signable_dict()`.
- *
- * The signature.value is blanked to "". All other fields are included.
- */
-function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
+// Verbatim v1 form — DO NOT MODIFY. The v1 byte contract is frozen.
+function _constitutionToSignableDictV1(c: Constitution): Record<string, unknown> {
   const provDict: Record<string, unknown> = {
     authored_by: c.provenance.authored_by,
     approved_by: c.provenance.approved_by,
@@ -787,6 +852,223 @@ function constitutionToSignableDict(c: Constitution): Record<string, unknown> {
   return result;
 }
 
+// Unnumbered → numbered check key mapping (mirrors Python's _UNNUMBERED_TO_NUMBERED)
+const _UNNUMBERED_TO_NUMBERED: Record<string, string> = {
+  glc_minimum_substance: "glc_002_minimum_substance",
+  glc_no_parroting: "glc_003_no_parroting",
+  glc_llm_coherence: "glc_005_llm_coherence",
+};
+
+// Serialize ReasoningConfig for signing (mirrors Python's _reasoning_config_to_dict with for_signing=True)
+function _reasoningConfigToSignableDict(reasoning: ReasoningConfig): Record<string, unknown> {
+  const checksDict: Record<string, Record<string, unknown>> = {};
+  for (const [name, check] of Object.entries(reasoning.checks)) {
+    const canonical = _UNNUMBERED_TO_NUMBERED[name] ?? name;
+    const d: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(check)) {
+      d[k] = v;
+    }
+    if (canonical === "glc_005_llm_coherence" && "score_threshold" in check) {
+      // Convert float to basis points for deterministic canonical JSON (mirrors Python for_signing=True)
+      d["score_threshold"] = Math.round((check as GLCLLMCoherenceConfig).score_threshold * 10000);
+    }
+    checksDict[name] = d;
+  }
+
+  const d: Record<string, unknown> = {
+    require_justification_for: reasoning.require_justification_for,
+    on_missing_justification: reasoning.on_missing_justification,
+    on_check_error: reasoning.on_check_error,
+    on_api_error: reasoning.on_api_error,
+    checks: checksDict,
+    evaluate_before_escalation: reasoning.evaluate_before_escalation,
+    auto_deny_on_reasoning_failure: reasoning.auto_deny_on_reasoning_failure,
+  };
+
+  if (reasoning.judge != null) {
+    d["judge"] = {
+      default_provider: reasoning.judge.default_provider,
+      default_model: reasoning.judge.default_model,
+      cross_provider: reasoning.judge.cross_provider,
+    };
+  }
+
+  return d;
+}
+
+// v2 canonical form — mirrors spec/tools/generate_signable_vectors_v2.py:build_v2_signable_dict byte-for-byte
+function _constitutionToSignableDictV2(c: Constitution): Record<string, unknown> {
+  const provDict: Record<string, unknown> = {
+    authored_by: c.provenance.authored_by,
+    approved_by: c.provenance.approved_by,
+    approval_date: c.provenance.approval_date,
+    approval_method: c.provenance.approval_method,
+    change_history: c.provenance.change_history,
+  };
+
+  if (c.provenance.signature != null) {
+    provDict.signature = {
+      value: "",
+      key_id: c.provenance.signature.key_id,
+      signed_by: c.provenance.signature.signed_by,
+      signed_at: c.provenance.signature.signed_at,
+      scheme: c.provenance.signature.scheme,
+    };
+  } else {
+    provDict.signature = null;
+  }
+
+  const identityDict: Record<string, unknown> = {
+    agent_name: c.identity.agent_name,
+    domain: c.identity.domain,
+    description: c.identity.description,
+  };
+  if (c.identity.extensions) {
+    for (const [k, v] of Object.entries(c.identity.extensions)) {
+      if (!isDangerousKey(k)) identityDict[k] = v;
+    }
+  }
+
+  const result: Record<string, unknown> = {
+    schema_version: c.schema_version,
+    identity: identityDict,
+    provenance: provDict,
+    boundaries: c.boundaries.map((b) => ({ ...b })),
+    trust_tiers: { ...c.trust_tiers },
+    halt_conditions: c.halt_conditions.map((h) => ({ ...h })),
+    invariants: c.invariants.map((inv) => ({
+      id: inv.id,
+      rule: inv.rule,
+      enforcement: inv.enforcement,
+      check: inv.check,
+    })),
+    policy_hash: c.policy_hash,
+  };
+
+  if (c.authority_boundaries != null) {
+    const ab: Record<string, unknown> = {
+      cannot_execute: c.authority_boundaries.cannot_execute,
+      must_escalate: c.authority_boundaries.must_escalate.map((r) => {
+        if (r.target == null) {
+          return { condition: r.condition, target: null };
+        }
+        return {
+          condition: r.condition,
+          target: {
+            type: r.target.type,
+            url: r.target.url ?? null,
+            handler: r.target.handler ?? null,
+          },
+        };
+      }),
+      can_execute: c.authority_boundaries.can_execute,
+      default_escalation: c.authority_boundaries.default_escalation,
+    };
+    if (c.authority_boundaries.escalation_visibility !== "visible") {
+      ab.escalation_visibility = c.authority_boundaries.escalation_visibility;
+    }
+    if (c.authority_boundaries.anomaly_tracking?.cli || c.authority_boundaries.anomaly_tracking?.http) {
+      const at: Record<string, boolean> = {};
+      if (c.authority_boundaries.anomaly_tracking.cli) at.cli = true;
+      if (c.authority_boundaries.anomaly_tracking.http) at.http = true;
+      ab.anomaly_tracking = at;
+    }
+    result.authority_boundaries = ab;
+    result.escalation_targets = { default: c.authority_boundaries.default_escalation };
+  }
+
+  // v2: composition emitted whenever present, even at default escalation_visibility
+  if (c.composition != null) {
+    result.composition = { escalation_visibility: c.composition.escalation_visibility ?? "visible" };
+  }
+
+  if (c.cli_permissions != null) {
+    result.cli_permissions = {
+      mode: c.cli_permissions.mode,
+      justification_required: c.cli_permissions.justification_required,
+      inspect_scripts: c.cli_permissions.inspect_scripts ?? false,
+      commands: c.cli_permissions.commands.map((cmd) => ({
+        id: cmd.id,
+        binary: cmd.binary,
+        authority: cmd.authority,
+        argv_pattern: cmd.argv_pattern ?? "*",
+        description: cmd.description ?? "",
+        escalation_target: cmd.escalation_target ?? null,
+      })),
+      invariants: c.cli_permissions.invariants.map((inv) => ({
+        id: inv.id,
+        description: inv.description,
+        verdict: inv.verdict,
+        pattern: inv.pattern ?? null,
+        condition: inv.condition ?? null,
+      })),
+    };
+  }
+
+  if (c.api_permissions != null) {
+    result.api_permissions = {
+      mode: c.api_permissions.mode,
+      justification_required: c.api_permissions.justification_required,
+      endpoints: c.api_permissions.endpoints.map((ep) => ({
+        id: ep.id,
+        url_pattern: ep.url_pattern,
+        authority: ep.authority,
+        methods: ep.methods ?? ["*"],
+        description: ep.description ?? "",
+        escalation_target: ep.escalation_target ?? null,
+      })),
+      invariants: c.api_permissions.invariants.map((inv) => ({
+        id: inv.id,
+        description: inv.description,
+        verdict: inv.verdict,
+        pattern: inv.pattern ?? null,
+      })),
+    };
+  }
+
+  if (c.trusted_sources != null) {
+    result.trusted_sources = { ...c.trusted_sources };
+  }
+
+  // v2: version emitted when non-default
+  if (c.version != null && c.version !== "1.0") {
+    result.version = c.version;
+  }
+
+  // v2: reasoning emitted when present
+  if (c.reasoning != null) {
+    result.reasoning = _reasoningConfigToSignableDict(c.reasoning);
+  }
+
+  return result;
+}
+
+/** Parse signing version from a scheme string. Throws on unrecognized or malformed input. */
+function _parseSigningVersion(scheme: string): number {
+  const PREFIX = "constitution_sig_v";
+  if (!scheme.startsWith(PREFIX)) {
+    throw new Error(`Unrecognized signature scheme: ${scheme}`);
+  }
+  const suffix = scheme.slice(PREFIX.length);
+  const n = Number(suffix);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`Malformed signature scheme version: ${scheme}`);
+  }
+  return n;
+}
+
+/**
+ * Build the signable dict for a constitution.
+ *
+ * signingVersion=1 dispatches to the frozen v1 form (legacy verification).
+ * signingVersion=2 (default) dispatches to the v2 unified canonical form (SAN-492).
+ */
+export function constitutionToSignableDict(c: Constitution, signingVersion: number = 2): Record<string, unknown> {
+  if (signingVersion === 1) return _constitutionToSignableDictV1(c);
+  if (signingVersion === 2) return _constitutionToSignableDictV2(c);
+  throw new Error(`Unsupported signing_version: ${signingVersion}`);
+}
+
 /**
  * Sanitize a value tree for signing: convert exact-integer floats to int,
  * reject non-integer floats. Matches Python's `sanitize_for_signing()`.
@@ -816,13 +1098,11 @@ function sanitizeForSigning(obj: unknown): unknown {
 /**
  * Compute the canonical signable JSON string for a Constitution.
  *
- * This is the exact byte sequence Ed25519-signed by signConstitution(),
- * exposed for cross-SDK byte-parity testing (SAN-490). Wraps the existing
- * internal pipeline: constitutionToSignableDict -> sanitizeForSigning ->
- * canonicalize.
+ * signingVersion defaults to 2 (v2 unified canonical form, SAN-492).
+ * Pass signingVersion=1 to reproduce the frozen v1 byte sequence.
  */
-export function computeCanonicalSignableJson(constitution: Constitution): string {
-  const signableDict = constitutionToSignableDict(constitution);
+export function computeCanonicalSignableJson(constitution: Constitution, signingVersion: number = 2): string {
+  const signableDict = constitutionToSignableDict(constitution, signingVersion);
   const sanitized = sanitizeForSigning(signableDict);
   return canonicalize(sanitized);
 }
@@ -830,8 +1110,9 @@ export function computeCanonicalSignableJson(constitution: Constitution): string
 /**
  * Verify a constitution's Ed25519 signature.
  *
- * Reconstructs the signable dict with signature.value="", canonicalizes it,
- * and verifies against the stored signature. Also checks key_id match.
+ * Reads signature.scheme and dispatches to the matching signing version.
+ * Unrecognized, malformed, or unsupported schemes return false (preserving
+ * the boolean return contract for callers).
  *
  * Returns false for unsigned constitutions.
  */
@@ -842,11 +1123,18 @@ export function verifyConstitutionSignature(
   const sig = constitution.provenance.signature;
   if (!sig || !sig.value) return false;
 
-  // Check key_id matches
   const expectedKeyId = getKeyId(publicKey);
   if (sig.key_id !== expectedKeyId) return false;
 
-  const signableDict = constitutionToSignableDict(constitution);
+  let signableDict: Record<string, unknown>;
+  try {
+    const version = _parseSigningVersion(sig.scheme);
+    signableDict = constitutionToSignableDict(constitution, version);
+  } catch {
+    // Unrecognized scheme, malformed scheme, or unsupported version: not verifiable
+    return false;
+  }
+
   const sanitized = sanitizeForSigning(signableDict);
   const canonical = canonicalize(sanitized);
   const data = Buffer.from(canonical, "utf-8");
@@ -859,41 +1147,42 @@ export function verifyConstitutionSignature(
 /**
  * Compute policy_hash and add Ed25519 signature to a constitution.
  *
+ * signingVersion defaults to 2 (SAN-492). Pass signingVersion=1 only to
+ * re-sign legacy constitutions under the v1 canonical form.
+ *
  * Returns a new constitution object with provenance.signature populated.
  */
 export function signConstitution(
   constitution: Constitution,
   privateKey: KeyObject,
   signedBy: string,
+  signingVersion: number = 2,
 ): Constitution {
   const keyId = getKeyId(privateKey);
 
-  // Build signable dict with policy_hash and blank signature
   const sigBlock: ConstitutionSignature = {
     value: "",
     key_id: keyId,
     signed_by: signedBy,
     signed_at: new Date().toISOString(),
-    scheme: "constitution_sig_v1",
+    scheme: "constitution_sig_v" + signingVersion,
   };
 
-  // Clone and attach signature placeholder
   const signed: Constitution = structuredClone(constitution);
   signed.provenance = { ...signed.provenance, signature: sigBlock };
 
   // Pass 1: compute policy_hash (signable dict still has policy_hash=null)
-  const preDict = constitutionToSignableDict(signed);
+  const preDict = constitutionToSignableDict(signed, signingVersion);
   const preSanitized = sanitizeForSigning(preDict);
   signed.policy_hash = hashObj(preSanitized);
 
   // Pass 2: rebuild signable dict with correct policy_hash, then sign
-  const signableDict = constitutionToSignableDict(signed);
+  const signableDict = constitutionToSignableDict(signed, signingVersion);
   const sanitized = sanitizeForSigning(signableDict);
   const canonical = canonicalize(sanitized);
   const data = Buffer.from(canonical, "utf-8");
   const signatureB64 = sign(data, privateKey);
 
-  // Replace placeholder
   signed.provenance.signature!.value = signatureB64;
 
   return signed;
@@ -906,9 +1195,10 @@ export function saveConstitution(constitution: Constitution, path: string): void
   const dir = dirname(path);
   if (dir) mkdirSync(dir, { recursive: true });
 
-  const dict = constitutionToSignableDict(constitution);
+  // signingVersion=1: preserve existing customer-visible YAML output (SAN-492)
+  const dict = constitutionToSignableDict(constitution, 1);
 
-  // Restore actual signature value (constitutionToSignableDict blanks it)
+  // Restore actual signature value (_constitutionToSignableDictV1 blanks it)
   if (constitution.provenance.signature?.value) {
     const prov = dict.provenance as Record<string, unknown>;
     const sig = prov.signature as Record<string, unknown>;

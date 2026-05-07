@@ -1,3 +1,65 @@
+## [Unreleased] -- 2026-05-07 (SAN-492)
+
+### Added
+
+- **Full ReasoningConfig type system** in `packages/core/src/types.ts`:
+  ReasoningConfig + GLCCheckConfig + GLCMinimumSubstanceConfig +
+  GLCNoParrotingConfig + GLCLLMCoherenceConfig + JudgeConfig +
+  InvariantJudgeOverride. Mirrors Python's structure
+  (`sanna-repo/src/sanna/constitution.py:286-440`) for byte-equal
+  cross-SDK canonicalization. Constitution interface now exposes
+  `reasoning?: ReasoningConfig | null`.
+- **`inspect_scripts: boolean`** added to `CliPermissions` interface
+  (default `false`). Closes a feature-parity gap with Python's
+  `CliPermissions.inspect_scripts`. Schema formalized this field in
+  v1.1.0 (sanna-protocol PR #36).
+- Cross-SDK byte-parity regression test for v2 in
+  `packages/core/tests/cross-language.test.ts` loading
+  `spec/fixtures/constitution-signable-vectors-v2.json` (20 vectors).
+- v1 backwards-compat canary asserting `minimal.yaml` (v1-signed)
+  verifies under v1 dispatch.
+
+### Changed
+
+- **TypeScript SDK aligned to v2 unified canonical signable form.**
+  `constitutionToSignableDict` accepts a `signingVersion: number = 2`
+  parameter. v1 path preserved unchanged for legacy verification of
+  currently-signed customer constitutions; v2 path mirrors the
+  reference generator at `spec/tools/generate_signable_vectors_v2.py`
+  byte-for-byte. Sign defaults to v2; verify reads
+  `signature.scheme` and dispatches via a defensive
+  `_parseSigningVersion` helper. Unrecognized/malformed schemes are
+  rejected at the verify level by returning `false` (preserving the
+  existing boolean return contract).
+- **`saveConstitution` explicitly passes `signingVersion: 1`** to
+  preserve existing customer-visible YAML output. Save-time YAML
+  output is unchanged by this release; only sign-time canonical bytes
+  shift to v2 by default.
+- Spec submodule pin advanced from `3aea629` to `aa1ccc1` (3-commit
+  delta covering SAN-492 spec/schema/vectors/generator + state.md SHA
+  fix + receipt schema enum widen).
+- YAML loader (`loadConstitutionString` or equivalent) now parses
+  `reasoning` and `cli_permissions.inspect_scripts`; previously dropped
+  silently.
+
+### Notes
+
+- **Customer-visible save-path output unchanged.** Existing TS callers
+  of `saveConstitution` get the same YAML output as before. v2
+  canonical bytes are produced only at sign-time.
+- **policy_hash scope unchanged.** `compute_constitution_hash`
+  continues to cover the v1 subset (excludes cli_permissions,
+  api_permissions, composition). v2 constitution signatures
+  additionally cover those fields. Asymmetry is intentional and
+  documented in spec Section 5.3.
+
+### Tickets
+
+- SAN-492 (this entry; TypeScript SDK portion -- closes the
+  cross-3-repo v2 alignment work). Companion sanna-protocol PR #36
+  (spec + schema + vectors + reference generator) and sanna-repo PR
+  #61 (Python SDK alignment) already merged.
+
 ## [Unreleased] -- 2026-05-07 (SAN-490)
 
 ### Changed
