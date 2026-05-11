@@ -1396,7 +1396,7 @@ describe("SAN-379: enforcement_mode schema conformance", () => {
 // at child-process-interceptor.ts:826). Together, the customer-facing
 // content_mode toggle now works end-to-end.
 describe(
-  "SAN-406 redaction emission (cli_invocation_anomaly) -- BLOCKED ON SAN-487 (authority bypass)",
+  "SAN-406 redaction emission (cli_invocation_anomaly) -- end-to-end (SAN-406 + SAN-487)",
   () => {
     let tempDir: string;
     let anomalyConstitutionPath: string;
