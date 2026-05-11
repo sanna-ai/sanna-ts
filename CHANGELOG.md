@@ -1,3 +1,36 @@
+## [Unreleased] -- 2026-05-10 (SAN-488)
+
+### Changed
+
+- **Cosmetic test-title cleanup.** Renamed two stale describe(...) block
+  titles in sanna-ts to drop the "BLOCKED ON SAN-487 (authority
+  bypass)" suffix. The tests were unblocked by SAN-487 PR 2
+  (sanna-ts commit `bc931f6`, merged 2026-05-06) -- the
+  `describe.skip(...)` was removed at that time, but the title
+  strings retained the stale "BLOCKED" label. Tests execute
+  successfully; the label was misleading audit-trail noise.
+  - `packages/core/tests/child-process-interceptor.test.ts:1399`
+  - `packages/core/tests/fetch-interceptor.test.ts:1135`
+  Both renamed to "... -- end-to-end (SAN-406 + SAN-487)" form.
+
+### Why this matters
+
+- Future test-output readers seeing `BLOCKED ON SAN-487 (authority
+  bypass)` in describe titles would assume the test is still blocked
+  or that SAN-487 isn't fixed. Both are false. Cleanup eliminates the
+  audit-trail confusion potential.
+- No functional change. No assertion changes, no test-body changes.
+- CHANGELOG.md historical reference (the original SAN-406 entry
+  quoting the old describe.skip string) is unchanged -- historical
+  audit-trail content is immutable.
+
+### Cross-references
+
+- SAN-487 PR 2 (sanna-ts commit `bc931f6`, merged 2026-05-06) -- the
+  fix that unblocked the tests; left the stale titles.
+- SAN-406 -- the underlying redaction-emission ticket the tests
+  exercise.
+
 ## [Unreleased] -- 2026-05-10 (SAN-508)
 
 ### Fixed (security)
