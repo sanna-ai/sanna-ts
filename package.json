@@ -14,12 +14,14 @@
   },
   "overrides": {
     "commander": "^14.0.0",
-    "hono": "^4.12.12",
+    "hono": "^4.12.18",
     "@hono/node-server": "^1.19.13",
     "express-rate-limit": "^8.2.2",
-    "path-to-regexp": "^8.4.0"
+    "path-to-regexp": "^8.4.0",
+    "fast-uri": "^3.1.2",
+    "ip-address": "^10.1.1"
   },
-  "overridesRationale": "SAN-228: pin 4 transitive deps brought in by @modelcontextprotocol/sdk to patched versions. Upstream MCP SDK declares hono ^4.11.4 which admits vulnerable versions; SAN-253 tracks upstream coordination. Remove this block when MCP SDK catches up.",
+  "overridesRationale": "SAN-228: pin 4 transitive deps brought in by @modelcontextprotocol/sdk to patched versions. Upstream MCP SDK declares hono ^4.11.4 which admits vulnerable versions; SAN-253 tracks upstream coordination. Remove this block when MCP SDK catches up. SAN-508 (2026-05-10) bumps hono ^4.12.12 -> ^4.12.18 and adds fast-uri ^3.1.2 + ip-address ^10.1.1 to patch newly-published CVEs (1 HIGH fast-uri + 2 MODERATE hono/ip-address).",
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
