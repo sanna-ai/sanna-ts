@@ -1,3 +1,68 @@
+## [Unreleased] -- 2026-05-10 (SAN-508)
+
+### Fixed (security)
+
+- **Patched 3 production-dep CVEs** (1 HIGH + 2 MODERATE) via npm
+  package overrides in root `package.json`:
+  - `fast-uri` ^3.1.2 (was transitive 3.1.0): patches
+    GHSA-q3j6-qgpj-74h6 + GHSA-v39h-62p7-jpjc. Path:
+    `ajv-formats` -> `ajv` -> `fast-uri`. HIGH severity.
+  - `hono` ^4.12.18 (was overridden at ^4.12.12, transitive 4.12.15):
+    patches 5 advisories. Path: `@modelcontextprotocol/sdk` -> `hono`.
+    MODERATE severity.
+  - `ip-address` ^10.1.1 (was transitive 10.1.0): patches
+    GHSA-v2v4-37r5-5v8g. Path:
+    `@modelcontextprotocol/sdk` -> `ip-address`. MODERATE severity.
+- **Side-effect bumps from pristine lock-file resolution:** 99 other
+  transitive packages bumped to caret-compatible newer versions during
+  npm's full re-resolution pass (required because npm 11.x preserves
+  existing lock + cache resolutions; the only way to apply override-
+  constrained re-resolution is `npm cache clean --force && rm -rf
+  node_modules package-lock.json && npm install --prefer-online`). All
+  99 bumps are within the same major and verified non-breaking by the
+  full test suite (1467/1467). Bump families: esbuild platform
+  binaries, rolldown platform binaries, rollup platform binaries,
+  vite, ajv, express-rate-limit, jose, zod, zod-to-json-schema, and
+  smaller build/lint toolchain deps.
+
+### Changed
+
+- **`overridesRationale` string** in `package.json` extended with a
+  SAN-508 sentence. Existing SAN-228 + SAN-253 references preserved.
+
+### Why this matters
+
+- SOC 2 6.6 (Vulnerability Management): per SAN-501 SLA, security
+  advisories are merged within 7 days. CVEs were published 2026-05-10;
+  this fix lands within 1 day -- well inside SLA.
+- CI's `npm audit --omit=dev --audit-level=high` step was failing on
+  every sanna-ts PR (and on origin/main itself) until this lands.
+  Unblocks SAN-493 PR 3 of 3 (sanna-ts PR #52) to merge with green CI
+  after rebase.
+- Patch-level bumps within the same major (caret syntax) avoid
+  upstream-breaking jumps. ajv and @modelcontextprotocol/sdk continue
+  to function with the patched transitives.
+
+### Out of scope
+
+- Upstream coordination with @modelcontextprotocol/sdk to release a
+  version that pulls patched hono + ip-address directly. Tracked as
+  ongoing SAN-253 coordination. This PR pins via overrides until
+  upstream catches up.
+- pnpm-lock.yaml is NOT updated by this PR. Per memory rule
+  `reference_sanna_ts_uses_npm_not_pnpm.md`, sanna-ts uses npm; pnpm-
+  lock is vestigial in tree and gets caught up by dependabot's next
+  pass.
+
+### Cross-references
+
+- SAN-501 -- dep-update SLA + SOC 2 6.6 evidence (the policy this PR
+  satisfies).
+- SAN-228 -- original overrides block + dependabot configuration.
+- SAN-253 -- upstream MCP SDK coordination on transitive CVEs.
+- SAN-493 PR 3 of 3 (sanna-ts PR #52) -- blocked on this; unblocks
+  after merge.
+
 ## [Unreleased] -- 2026-05-07 (SAN-492)
 
 ### Added
