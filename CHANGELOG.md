@@ -63,6 +63,75 @@
 - SAN-493 PR 3 of 3 (sanna-ts PR #52) -- blocked on this; unblocks
   after merge.
 
+## [Unreleased] -- 2026-05-10 (SAN-493 PR 3 of 3)
+
+### Changed
+
+- **`tools/generate-state-doc.ts`**: drops git-SHA from the
+  `docs/state.md` header. The pre-fix header was
+  `<!-- generated: TS  git-sha: SHA -->`; post-fix it is
+  `<!-- generated: TS -->`. The SHA was always one-commit-stale
+  because regen runs pre-commit (per the sealed-gate pattern,
+  HEAD at regen time is the parent commit), so the embedded SHA
+  never matched the commit that landed the state.md update. Now
+  the file contains only derived state from sources of truth
+  (per-package versions + test counts, receipt constants, spec
+  submodule SHA, latest CHANGELOG entry); commit SHAs come from
+  `git log`.
+- **`gitSha()` function removed** from `generate-state-doc.ts`
+  (was used only for the header; now dead code).
+- **`generateFull()` signature simplified** from
+  `(root, sha, timestamp)` to `(root, timestamp)`. Internal API
+  change; no external callers.
+- **`main()` regen print statement** drops the `sha=${sha}, `
+  field; keeps tests + spec_version + tool_version.
+
+### Added
+
+- **`packages/core/tests/state-md-header.test.ts`** (new file):
+  regression guard asserting the `git-sha:` substring does NOT
+  appear in the first 5 lines of the committed state.md. Catches
+  a future re-introduction of the embedded SHA. No side effects
+  (reads state.md directly; does not invoke the regen command).
+
+### Why this matters
+
+- Eliminates a known one-commit-stale audit artifact in state.md.
+  Auditors reading the file previously saw a SHA that didn't match
+  the commit it landed in; post-fix, the file contains no SHA and
+  refers auditors to `git log` for that information.
+- Removes the extra round-trip (regen post-first-commit) that
+  Sonnet workarounds previously required. One-commit PRs become
+  possible again for state-only changes.
+- Cross-SDK consistency: closes the loop on SAN-493. Same fix
+  pattern landed in sanna-protocol (PR #39, merged 16798d6) and
+  sanna-repo (PR #63, merged 39b1152). All 3 repos now produce
+  state.md with identical header format.
+- The fix is mechanism-only: per-package versions + receipt
+  constants + spec submodule SHA on a clean tree are byte-
+  identical to pre-fix. The aggregate test count goes 65 -> 66
+  due to the new regression-guard test (a real new test, real
+  count); core test count goes 48 -> 49.
+
+### Out of scope
+
+- Cleanup of the untracked `packages/core/tests/anomaly.test 2.ts`
+  macOS Finder duplicate -- separate hygiene ticket. The
+  generator uses `git ls-files`, so the count is unaffected by
+  this untracked file.
+- Bumping the `spec` submodule pin (currently `aa1ccc1`,
+  pre-SAN-498). Separate concern.
+
+### Cross-references
+
+- SAN-493 PR 1 of 3 -- sanna-protocol (PR #39, merged 16798d6).
+- SAN-493 PR 2 of 3 -- sanna-repo (PR #63, merged 39b1152).
+- SAN-492 PR 1 (sanna-protocol PR #36) -- where this surfaced,
+  workaround commit `ca2de52`.
+- Memory rule `feedback_state_md_hard_gate_before_commit.md`.
+- Memory rule `feedback_state_md_regen_commands_per_repo.md`.
+- Memory rule `reference_sanna_ts_uses_npm_not_pnpm.md`.
+
 ## [Unreleased] -- 2026-05-07 (SAN-492)
 
 ### Added
