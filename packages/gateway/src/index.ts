@@ -28,8 +28,6 @@ export { EscalationStore } from "./escalation.js";
 export type { Escalation, EscalationStatus, EscalationStoreOptions } from "./escalation.js";
 export { CircuitBreaker, CircuitBreakerOpenError } from "./circuit-breaker.js";
 export type { CircuitState, CircuitBreakerOptions } from "./circuit-breaker.js";
-export { redactPII, redactInObject } from "./pii.js";
-export type { PiiPattern, RedactionResult } from "./pii.js";
 export {
   namespaceTool,
   parseNamespacedTool,
