@@ -72,7 +72,7 @@ export {
 
 export type { ReceiptParams } from "./receipt.js";
 
-export { verifyReceipt, verifyReceiptSet } from "./verifier.js";
+export { verifyReceipt, verifyReceiptSet, checkGatewayRedactionMarkersCorrect } from "./verifier.js";
 export { verifySessionManifestReceipt, verifyInvocationAnomalyReceipt } from "./verifier-manifest.js";
 
 export { ReceiptStore } from "./store.js";

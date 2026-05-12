@@ -406,6 +406,102 @@ function checkTimestamp(receipt: Record<string, unknown>): string[] {
   return errors;
 }
 
+/**
+ * Verify a value is a well-formed spec section 2.11.1 redaction marker.
+ *
+ * A valid marker has shape: `{__redacted__: true, original_hash: "<64-hex>"}`.
+ *
+ * TS parallel of sanna-repo Python `_is_redaction_marker` at verify.py:668.
+ * Internal helper for `checkGatewayRedactionMarkersCorrect`. NOT exported.
+ *
+ * Note: this helper validates the DICT marker shape for spec section 2.11.1
+ * (gateway content redaction). It is DISTINCT from `isValidRedactionMarker`
+ * in verifier-manifest.ts which validates the STRING marker shape for spec
+ * section 2.14 / 2.22.5 (SAN-406 manifest content redaction). The two
+ * helpers cover non-overlapping scopes.
+ */
+function isRedactionMarker(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (obj.__redacted__ !== true) return false;
+  const oh = obj.original_hash;
+  return typeof oh === "string" && /^[a-f0-9]{64}$/.test(oh);
+}
+
+/**
+ * Verify content_mode declaration matches actual spec section 2.11.1 marker state.
+ *
+ * Stable umbrella error code: `REDACTION_CLAIM_WITHOUT_MARKER` (cross-SDK aligned
+ * with sanna-repo Python verifier at sanna/verify.py:_check_gateway_redaction_markers_correct).
+ * Single umbrella covering three distinct rejection cases (the fixture and the
+ * SDKs intentionally use one code for "redaction state mismatch" generally):
+ *
+ * 1. content_mode='redacted' is claimed but neither inputs.context nor
+ *    outputs.response contains a valid spec section 2.11.1 marker.
+ * 2. content_mode='redacted' and a field has __redacted__=true but the marker
+ *    is malformed (missing or invalid original_hash). Attacker may have
+ *    pre-populated a fake marker that bypassed FIX-12.
+ * 3. content_mode='full' is claimed but a field IS a valid spec section 2.11.1
+ *    marker. Claim/state mismatch the other direction.
+ *
+ * Scope note: only inputs.context and outputs.response are checked. This matches
+ * the emission-side scope of @sanna-ai/core's `applyRedactionMarkers` which only
+ * writes markers to those two fields. If future spec changes extend the
+ * redactable-field set, this function must be updated in lockstep with the
+ * Python counterpart at sanna-repo's sanna/verify.py.
+ *
+ * @param receipt The receipt object to verify.
+ * @returns An array of error strings, each prefixed with REDACTION_CLAIM_WITHOUT_MARKER:.
+ *          Empty array if all states are consistent.
+ */
+export function checkGatewayRedactionMarkersCorrect(receipt: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  const contentMode = receipt.content_mode as string | null | undefined;
+  const inputs = (receipt.inputs as Record<string, unknown>) ?? {};
+  const outputs = (receipt.outputs as Record<string, unknown>) ?? {};
+  const ctx = inputs.context;
+  const resp = outputs.response;
+
+  const isMarkerAttempt = (v: unknown): boolean =>
+    typeof v === "object" && v !== null && (v as Record<string, unknown>).__redacted__ === true;
+
+  const ctxIsMarkerAttempt = isMarkerAttempt(ctx);
+  const respIsMarkerAttempt = isMarkerAttempt(resp);
+  const ctxIsValidMarker = ctxIsMarkerAttempt && isRedactionMarker(ctx);
+  const respIsValidMarker = respIsMarkerAttempt && isRedactionMarker(resp);
+
+  if (contentMode === "redacted") {
+    if (!(ctxIsValidMarker || respIsValidMarker)) {
+      errors.push(
+        "REDACTION_CLAIM_WITHOUT_MARKER: content_mode='redacted' is claimed " +
+          "but neither inputs.context nor outputs.response contains a valid " +
+          "spec section 2.11.1 marker",
+      );
+    }
+    if (ctxIsMarkerAttempt && !ctxIsValidMarker) {
+      errors.push(
+        "REDACTION_CLAIM_WITHOUT_MARKER: inputs.context marker is malformed " +
+          "(missing or invalid original_hash; expected 64-char lowercase hex)",
+      );
+    }
+    if (respIsMarkerAttempt && !respIsValidMarker) {
+      errors.push(
+        "REDACTION_CLAIM_WITHOUT_MARKER: outputs.response marker is malformed " +
+          "(missing or invalid original_hash; expected 64-char lowercase hex)",
+      );
+    }
+  } else if (contentMode === "full") {
+    if (ctxIsValidMarker || respIsValidMarker) {
+      errors.push(
+        "REDACTION_CLAIM_WITHOUT_MARKER: content_mode='full' is claimed but " +
+          "inputs/outputs contain spec section 2.11.1 markers (claim/state mismatch)",
+      );
+    }
+  }
+
+  return errors;
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 /**
@@ -485,6 +581,7 @@ export function verifyReceipt(
   checksPerformed.push("content_hashes");
   const hashErrors = checkContentHashes(receipt);
   allErrors.push(...hashErrors);
+  allErrors.push(...checkGatewayRedactionMarkersCorrect(receipt)); // SAN-516 PR 3 of 3
 
   // 5. Status/count consistency
   checksPerformed.push("status_consistency");
