@@ -22,6 +22,8 @@ import { evaluateAuthority } from "./evaluator.js";
 import { generateReceipt, signReceipt } from "./receipt.js";
 import { loadConstitution, verifyConstitutionSignature } from "./constitution.js";
 import { loadPrivateKey, loadPublicKey } from "./crypto.js";
+import { applyRedaction } from "./redaction.js";
+import type { RedactionConfig } from "./redaction.js";
 import type {
   Constitution,
   CheckResult,
@@ -200,6 +202,7 @@ function runGovernance(
   agentModel?: string | null,
   agentModelProvider?: string | null,
   agentModelVersion?: string | null,
+  redactionConfig?: RedactionConfig,
 ): SannaResult<unknown> {
   const outputStr = toStr(output);
   const correlationId = `sanna-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -239,6 +242,7 @@ function runGovernance(
         agentModel,
         agentModelProvider,
         agentModelVersion,
+        redactionConfig,
       });
 
       throw new SannaHaltError(
@@ -299,6 +303,7 @@ function runGovernance(
     agentModel,
     agentModelProvider,
     agentModelVersion,
+    redactionConfig,
   });
 
   // 6. Store receipt in sink (best-effort)
@@ -338,6 +343,7 @@ interface GovernanceReceiptParams {
   agentModel?: string | null;
   agentModelProvider?: string | null;
   agentModelVersion?: string | null;
+  redactionConfig?: RedactionConfig;
 }
 
 function generateGovernanceReceipt(params: GovernanceReceiptParams): Receipt {
@@ -370,16 +376,25 @@ function generateGovernanceReceipt(params: GovernanceReceiptParams): Receipt {
     ...(params.agentModelVersion !== undefined && { agent_model_version: params.agentModelVersion }),
   });
 
+  // Apply redaction BEFORE signing (SEC-1: signature covers markers, not PII)
+  let signableReceipt = receipt as unknown as Record<string, unknown>;
+  if (params.redactionConfig?.enabled) {
+    const [redactedReceipt] = applyRedaction(signableReceipt, params.redactionConfig);
+    signableReceipt = redactedReceipt;
+    signableReceipt.content_mode = "redacted";
+    signableReceipt.content_mode_source = "local_config";
+  }
+
   // Sign receipt if key is available
   if (params.signingKey) {
     signReceipt(
-      receipt as unknown as Record<string, unknown>,
+      signableReceipt,
       params.signingKey,
       "sanna-middleware",
     );
   }
 
-  return receipt;
+  return signableReceipt as unknown as Receipt;
 }
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -443,6 +458,7 @@ export function sannaObserve<TArgs extends unknown[], TReturn>(
       options.agentModel,
       options.agentModelProvider,
       options.agentModelVersion,
+      options.redactionConfig,
     );
 
     return result as SannaResult<TReturn>;

@@ -479,6 +479,7 @@ export interface SannaObserveOptions {
   agentModel?: string | null;
   agentModelProvider?: string | null;
   agentModelVersion?: string | null;
+  redactionConfig?: import("./redaction.js").RedactionConfig;
 }
 
 // ── ReceiptSink types ─────────────────────────────────────────────

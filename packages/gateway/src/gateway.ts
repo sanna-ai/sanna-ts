@@ -26,6 +26,7 @@ import {
   LocalSQLiteSink,
   generateManifest,
   redactAttemptedField,
+  applyRedaction,
 } from "@sanna-ai/core";
 import type {
   Constitution,
@@ -34,6 +35,7 @@ import type {
   CheckResult,
   ReceiptSink,
   ContentMode,
+  RedactionConfig,
 } from "@sanna-ai/core";
 
 import type { GatewayConfig, DownstreamConfig } from "./config.js";
@@ -52,8 +54,6 @@ import {
 } from "./tool-namespace.js";
 import { injectJustificationParam } from "./schema-mutation.js";
 import { extractJustification } from "./schema-mutation.js";
-import { redactPII, redactInObject } from "./pii.js";
-import type { PiiPattern } from "./pii.js";
 import { deliverTokenViaWebhook } from "./webhook.js";
 import { deliverTokenToFile } from "./file-delivery.js";
 import {
@@ -115,8 +115,7 @@ export class SannaGateway {
   private _receiptStore: ReceiptStore | null = null;
   private _receiptSink: ReceiptSink | null = null;
   private _escalationStore: EscalationStore | null = null;
-  private _piiEnabled = false;
-  private _piiPatterns: PiiPattern[] | undefined;
+  private _redactionConfig: RedactionConfig | undefined;
   private _contentMode: ContentMode = null;
   private _workflowId: string | null = null;
   private _agentSessionId: string = "";
@@ -213,9 +212,9 @@ export class SannaGateway {
       });
     }
 
-    // 5. PII config
-    if (this._config.pii?.enabled) {
-      this._piiEnabled = true;
+    // 5. Redaction config
+    if (this._config.redaction) {
+      this._redactionConfig = this._config.redaction;
     }
 
     // 6. Connect to downstreams
@@ -558,14 +557,8 @@ export class SannaGateway {
     // b. Extract justification
     const { justification, cleanArgs } = extractJustification(rawArgs);
 
-    // c. PII redaction on input
-    let processedArgs = cleanArgs;
-    if (this._piiEnabled) {
-      processedArgs = redactInObject(cleanArgs, this._piiPatterns) as Record<
-        string,
-        unknown
-      >;
-    }
+    // c. (redaction is applied at the receipt level, not on raw args)
+    const processedArgs = cleanArgs;
 
     // d. Compute input hash for receipt triad
     const inputHash = computeInputHash(parsed.tool, processedArgs);
@@ -803,19 +796,8 @@ export class SannaGateway {
       };
     }
 
-    // h. PII redact output
-    let processedResult = toolResult;
-    if (this._piiEnabled && toolResult) {
-      processedResult = {
-        ...toolResult,
-        content: toolResult.content.map((c) => {
-          if (c.type === "text" && c.text) {
-            return { ...c, text: redactPII(c.text, this._piiPatterns).redacted };
-          }
-          return c;
-        }),
-      };
-    }
+    // h. Process result (redaction applied at receipt level after construction)
+    const processedResult = toolResult;
 
     // i. Generate receipt with triad
     const actionHash = computeActionHash(
@@ -906,19 +888,27 @@ export class SannaGateway {
     });
 
     // Add triad
-    (receipt as Record<string, unknown>).receipt_triad = triad;
+    let mutableReceipt = receipt as Record<string, unknown>;
+    mutableReceipt.receipt_triad = triad;
+
+    // Apply redaction markers BEFORE signing (SEC-1)
+    if (this._redactionConfig?.enabled) {
+      const [redactedReceipt] = applyRedaction(mutableReceipt, this._redactionConfig);
+      mutableReceipt = redactedReceipt;
+      mutableReceipt.content_mode = "redacted";
+      mutableReceipt.content_mode_source = "local_config";
+    }
 
     // Sign if configured
     if (this._signingKey && this._config.receipts?.sign !== false) {
-      const signed = signReceipt(
-        receipt as Record<string, unknown>,
+      return signReceipt(
+        mutableReceipt,
         this._signingKey,
         this._constitution.identity?.agent_name ?? "sanna-gateway",
       );
-      return signed;
     }
 
-    return receipt as Record<string, unknown>;
+    return mutableReceipt;
   }
 
   private async _emitSessionManifest(): Promise<boolean> {

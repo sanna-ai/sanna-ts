@@ -1,3 +1,33 @@
+## [Unreleased] -- 2026-05-12 (SAN-250)
+
+### Changed (BREAKING)
+
+- **Receipt redaction model rewritten to spec section 2.11.1 marker objects.** Previously, the gateway used pattern-detection + in-place string substitution (e.g., `"user@example.com"` -> `"[EMAIL_REDACTED]"`), which is NOT spec section 2.11.1 conformant. Now, redaction produces marker objects matching the Python SDK byte-for-byte: `{__redacted__: true, original_hash: '<sha256-hex>'}` where `original_hash = SHA-256(NFC(value).encode("utf-8")).hex()`.
+- **`gateway.yaml` config schema BREAKING CHANGE**: the `pii:` block is replaced by a `redaction:` block matching the Python SDK shape:
+  - Before: `pii: { enabled: true, patterns: [...] }`
+  - After:  `redaction: { enabled: true, mode: "hash_only", fields: ["arguments", "result_text"] }`
+  - The `mode` field is currently restricted to `"hash_only"`; `"pattern_redact"` is reserved for future use and rejected at config load.
+- **`@sanna-ai/sanna-gateway` public API BREAKING CHANGE**: `redactPII`, `redactInObject`, `PiiPattern`, `RedactionResult` are no longer exported. The new field-level marker API is in `@sanna-ai/core`. Customers consuming the old pattern-detection symbols must migrate to `applyRedaction` from `@sanna-ai/core`.
+- **`@sanna-ai/core` new exports**: `applyRedaction`, `makeRedactionMarker`, type `RedactionConfig`, type `RedactionMarker`.
+- **fetch-interceptor, child-process-interceptor, core middleware** now accept a `redactionConfig` option. When `enabled: true`, the receipt's `inputs.context` and `outputs.response` (or any subset per `fields`) are replaced with marker objects BEFORE signing. Content hashes and fingerprints are recomputed against the marker-bearing receipt. `content_mode` is auto-set to `'redacted'`; `content_mode_source` to `'local_config'` (matches sanna-repo).
+- **spec section 2.11.4 FIX-12 pre-existing-marker injection guard ported.** Pre-existing marker dicts are re-redacted via Python-equivalent `JSON.dumps(sort_keys=True, ensure_ascii=True)` serialization with `(', ', ': ')` separators. Cross-SDK byte-identical with sanna-repo's `_apply_redaction_markers`.
+
+### Removed
+
+- `packages/gateway/src/pii.ts` and `packages/gateway/tests/pii.test.ts` deleted. Pattern-detection + substring substitution is non-conformant. If a pattern-detection-only utility is wanted later (a non-redacting PII detector for warning emission), file a follow-up ticket.
+
+### Audit-trail rationale
+
+`content_mode_source='local_config'` (existing enum value), NOT a new `'middleware_redaction_config'` value. The middleware-vs-gateway provenance distinction is carried by the `enforcement_surface` field per spec section 2.16. Both SDKs use `'local_config'` for receipts emitted from local SDK configuration. Cross-SDK byte parity preserved on this field.
+
+### Why this matters
+
+Before this change, sanna-ts shipped receipts with `content_mode='redacted'` metadata but no spec section 2.11.1 markers in the actual content fields. A Python verifier reading a TS-redacted receipt could not distinguish "spec-conformant redaction" from "metadata claim without redaction artifact". After this change, both SDKs produce byte-identical marker shapes; cross-SDK verifier-side enforcement (rejection of `content_mode='redacted'` without markers) becomes meaningful.
+
+Paired with: SAN-249 (Python; merged 2026-05-12 squash commit 8daad7d). Pairs with new Sprint 17 P0 ticket for cross-SDK fixtures + verifier rejection of receipts claiming `content_mode='redacted'` without spec section 2.11.1 markers (filed 2026-05-11; will dispatch after SAN-250 merges).
+
+---
+
 ## [Unreleased] -- 2026-05-10 (SAN-488)
 
 ### Changed

@@ -55,9 +55,10 @@ export interface GatewayConfig {
     sink?: string;
     content_mode?: "full" | "redacted" | "hashes_only";
   };
-  pii?: {
+  redaction?: {
     enabled: boolean;
-    patterns?: string[];
+    mode?: "hash_only";
+    fields?: ReadonlyArray<"arguments" | "result_text">;
   };
   circuit_breaker?: {
     failure_threshold: number;
@@ -420,15 +421,25 @@ export function loadGatewayConfig(configPath: string): GatewayConfig {
     };
   }
 
-  // PII
-  let pii: GatewayConfig["pii"];
-  const piiRaw = (gwRaw.pii ?? data.pii) as Record<string, unknown> | undefined;
-  if (piiRaw && typeof piiRaw === "object") {
-    pii = {
-      enabled: Boolean(piiRaw.enabled),
-      patterns: Array.isArray(piiRaw.patterns)
-        ? piiRaw.patterns.map(String)
-        : undefined,
+  // Redaction
+  let redaction: GatewayConfig["redaction"];
+  const redactionRaw = (gwRaw.redaction ?? data.redaction) as Record<string, unknown> | undefined;
+  if (redactionRaw && typeof redactionRaw === "object") {
+    const mode = (redactionRaw.mode as string | undefined) ?? "hash_only";
+    if (mode !== "hash_only") {
+      throw new GatewayConfigError(
+        `Unsupported redaction.mode '${mode}'. Only 'hash_only' is implemented; 'pattern_redact' is reserved for future use.`,
+      );
+    }
+    const fields = Array.isArray(redactionRaw.fields)
+      ? (redactionRaw.fields.map(String).filter(
+          (f): f is "arguments" | "result_text" => f === "arguments" || f === "result_text",
+        ))
+      : ["arguments" as const, "result_text" as const];
+    redaction = {
+      enabled: Boolean(redactionRaw.enabled),
+      mode: "hash_only",
+      fields: fields.length > 0 ? fields : ["arguments", "result_text"],
     };
   }
 
@@ -457,7 +468,7 @@ export function loadGatewayConfig(configPath: string): GatewayConfig {
     downstreams,
     escalation,
     receipts,
-    pii,
+    redaction,
     circuit_breaker: circuitBreaker,
   };
 

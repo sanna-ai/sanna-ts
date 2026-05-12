@@ -320,11 +320,10 @@ describe("SannaGateway", () => {
     expect(texts.some((t: string) => t === "permissive test")).toBe(true);
   }, 30_000);
 
-  it("should redact PII in output when enabled", async () => {
-    const config = makeConfig({
-      pii: { enabled: true },
-    });
-    const { client } = await createTestClient(config);
+  it("should forward raw output without substring substitution (SAN-250)", async () => {
+    // SAN-250: pii: substring substitution removed. Gateway forwards raw args
+    // and output unchanged. The old [EMAIL_REDACTED] pattern is gone.
+    const { client } = await createTestClient(makeConfig());
     const result = await client.callTool({
       name: "echo_echo",
       arguments: { text: "Contact alice@example.com" },
@@ -332,11 +331,10 @@ describe("SannaGateway", () => {
     const texts = result.content
       .filter((c: any) => c.type === "text")
       .map((c: any) => c.text);
-    // The echoed text should have the email redacted
-    const echoText = texts.find(
-      (t: string) => !t.includes("_sanna_receipt"),
-    );
-    expect(echoText).toContain("[EMAIL_REDACTED]");
+    const echoText = texts.find((t: string) => !t.includes("_sanna_receipt"));
+    // Raw text is forwarded unchanged
+    expect(echoText).toContain("alice@example.com");
+    expect(echoText).not.toContain("[EMAIL_REDACTED]");
   }, 30_000);
 
   it("should strip _justification from forwarded args", async () => {

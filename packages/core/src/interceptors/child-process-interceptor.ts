@@ -17,6 +17,8 @@ import { generateReceipt, signReceipt } from "../receipt.js";
 import { generateManifest, getSuppressedPatterns } from "../manifest.js";
 import { evaluateCliAuthority, checkCliInvariants } from "./cli-authority.js";
 import { redactAttemptedField } from "../anomaly.js";
+import { applyRedaction } from "../redaction.js";
+import type { RedactionConfig } from "../redaction.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -29,6 +31,7 @@ export interface PatchOptions {
   contentMode?: "full" | "redacted" | "hashes_only";
   workflowId?: string;
   parentFingerprint?: string;
+  redactionConfig?: RedactionConfig;
 }
 
 interface InterceptorState {
@@ -193,7 +196,7 @@ function emitReceipt(params: {
   if (_agentSessionId === null) {
     _agentSessionId = randomUUID();
   }
-  const receipt = generateReceipt({
+  let receipt = generateReceipt({
     correlation_id: randomUUID(),
     inputs: { binary: params.binary, argv: params.argv, agent_id: opts.agentId },
     outputs: { exit_code: params.exitCode },
@@ -217,9 +220,16 @@ function emitReceipt(params: {
     workflow_id: opts.workflowId ?? null,
     parent_receipts: opts.parentFingerprint ? [opts.parentFingerprint] : null,
     agent_identity: { agent_session_id: _agentSessionId },
-  });
+  }) as unknown as Record<string, unknown>;
 
-  _state.sink!.store(receipt).catch(() => {});
+  if (opts.redactionConfig?.enabled) {
+    const [redactedReceipt] = applyRedaction(receipt, opts.redactionConfig);
+    receipt = redactedReceipt;
+    receipt.content_mode = "redacted";
+    receipt.content_mode_source = "local_config";
+  }
+
+  _state.sink!.store(receipt as unknown as Receipt).catch(() => {});
 }
 
 function shouldExecute(decision: string): boolean {
