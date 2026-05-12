@@ -1,3 +1,31 @@
+## [Unreleased] -- 2026-05-12 (SAN-516 PR 3 of 3)
+
+### Added (BACKWARD-INCOMPATIBLE VERIFIER TIGHTENING)
+
+- **`checkGatewayRedactionMarkersCorrect(receipt) -> string[]`** in `packages/core/src/verifier.ts`: new TS verifier-side enforcement for spec section 2.11.1 marker objects. Emits umbrella stable error code `REDACTION_CLAIM_WITHOUT_MARKER` for three rejection cases: (a) content_mode='redacted' claimed but no valid markers in inputs.context or outputs.response, (b) marker dict has `__redacted__=true` but missing or invalid `original_hash`, (c) content_mode='full' claimed but markers are present (claim/state mismatch). Mirrors sanna-repo Python verifier byte-identically at the error-code level (cross-SDK error semantics aligned).
+- **Internal helper `isRedactionMarker(value)`** in `packages/core/src/verifier.ts`: validates spec section 2.11.1 marker shape (`{__redacted__: true, original_hash: <64-hex>}`). TS parallel of Python `_is_redaction_marker`. NOT exported (module-private).
+- **`packages/core/tests/cross-sdk-gateway-redaction-vectors.test.ts`**: new vitest fixture-consumer test suite consuming `spec/fixtures/gateway-redaction-vectors.json` (15 total tests: 2 canary + 4 marker + 1 fix12 + 5 apply_redaction + 3 verifier_rejection).
+
+### Changed
+
+- **`spec/` submodule pin** bumped from `aa1ccc1e6e24faa77801463f6c171f9a0e4d0d2c` to `d69977132ba3be4f7a144c8e43a2ff1c65019c91` (sanna-protocol PR #42 squash; SAN-516 PR 1 of 3).
+
+### Backward-compatibility note
+
+Verifier-tightening change. Receipts that previously passed verification with `content_mode='redacted'` but no spec section 2.11.1 markers, OR `content_mode='full'` with markers present, will now FAIL verification with the stable umbrella error code `REDACTION_CLAIM_WITHOUT_MARKER`. Pre-customer state means no real-world impact; cross-SDK aligned with sanna-repo PR #67 (Python verifier; merged 2026-05-12 squash cd8b422).
+
+### Why this matters
+
+SAN-249 + SAN-250 (closed 2026-05-12) brought both SDKs into spec section 2.11.1 marker-shape conformance at the EMISSION side. SAN-516 PR 1 of 3 (sanna-protocol) shipped the cross-SDK conformance fixture. PR 2 of 3 (sanna-repo) added the Python verifier rejection. This PR closes the audit-trail loop by adding the equivalent TS verifier rejection. Both verifiers now reject incomplete-state receipts with the SAME stable umbrella error code, providing cross-SDK error semantics for downstream consumers of `VerifyResult.errors`.
+
+Per CLAUDE.md governance principles 'Cross-SDK coherence is load-bearing' + 'Verifier-side enforcement is non-negotiable'.
+
+### SAN-516 ticket closure pending
+
+After this PR merges, the SAN-516 ticket can move to Done (all 3 PRs landed). A small follow-up may add sanna-protocol AGENTS.md documenting the cross-SDK verifier rejection contract (AC item 5; not blocking).
+
+---
+
 ## [Unreleased] -- 2026-05-12 (SAN-250)
 
 ### Changed (BREAKING)
