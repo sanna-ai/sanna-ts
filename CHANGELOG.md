@@ -1,3 +1,20 @@
+## [Unreleased] -- 2026-05-13 (SAN-527)
+
+### Changed
+
+- **[BREAKING]** `canonicalize` in `@sanna-ai/core` now rejects non-integer
+  floats with `TypeError`. Pre-SAN-527, canonicalize delegated to RFC 8785
+  JCS which accepted any number (e.g., `canonicalize(1.5)` returned `"1.5"`).
+  The rejection now matches Python `canonical_json_bytes` behavior and
+  conforms to spec section 3.2 ("MUST reject any JSON value that is a
+  floating-point number in signing and hashing contexts"). Also rejects
+  BigInt explicitly (Sanna receipts use Number type only).
+  Pre-customer state means no external consumer should be affected. Internal
+  callers were audited in Phase 1 and classified as data-shape-safe.
+  (SAN-527)
+
+---
+
 ## [Unreleased] -- 2026-05-12 (SAN-294)
 
 ### Added
