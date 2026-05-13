@@ -22,10 +22,10 @@
  *  5.  Float handling:
  *      5a. Integer-valued numbers serialize without decimal point
  *          (cross-SDK byte-parity with Python's int coercion)
- *      5b. Non-integer floats do NOT throw in canonicalize itself (it
- *          serializes them as JSON); the SIGNING path rejects them via
- *          sanitizeForSigning to guard cross-SDK byte-parity. Both
- *          behaviors are tested here.
+ *      5b. Non-integer floats throw TypeError in canonicalize (SAN-527
+ *          cross-SDK alignment; matches Python canonical_json_bytes per
+ *          spec section 3.2); the signing path also rejects via
+ *          sanitizeForSigning (redundant guard, still load-bearing).
  *  6.  Special float rejection: NaN / +Infinity / -Infinity
  *  7.  Signature round-trip: sign + verify on arbitrary Buffer;
  *      tampered message AND tampered signature both fail
@@ -43,11 +43,11 @@
  *           verify via computeFingerprints path; identical fingerprints
  *           prove consumers share the canonical function
  *
- * Note on Property 5b: the canonicalize library (RFC 8785 JCS) does
- * NOT throw for non-integer floats — it serializes them as JSON.
- * The rejection happens in sanitizeForSigning (signing path only).
- * The prompt's original claim "non-integer floats raise" is accurate
- * for the signing path; the test is reframed accordingly.
+ * Note on Property 5b: SAN-527 tightened canonicalize to call normalizeFloats
+ * before delegating to JCS. Non-integer floats now throw TypeError at the
+ * canonical-JSON layer (matching Python's canonical_json_bytes and spec section
+ * 3.2). The signing path also rejects via sanitizeForSigning; this is now a
+ * redundant guard rather than the sole rejection point.
  *
  * CI runs default 100 examples per property. Override via
  * SANNA_FAST_CHECK_NUM_RUNS env var for nightly extended runs.
@@ -355,33 +355,19 @@ describe("Property 5: Float handling (cross-SDK byte-parity)", () => {
   );
 
   it(
-    "5b: non-integer floats serialize in canonicalize (no throw) but are rejected by the signing path",
+    "5b: canonicalize rejects non-integer floats (cross-SDK alignment per spec section 3.2)",
     () => {
-      // The canonicalize library (RFC 8785 JCS) does NOT throw for
-      // non-integer floats: it delegates to JSON.stringify which serializes
-      // them normally (e.g., canonicalize(1.5) === "1.5"). The rejection
-      // lives in sanitizeForSigning (receipt.ts + verifier.ts), which is
-      // called by signReceipt before canonical serialization. This guards
-      // the signing path against cross-SDK divergence: Python's
-      // canonical_json_bytes may coerce float->int, producing "1" where TS
-      // would produce "1.5" without the guard.
+      // Pre-SAN-527, this test asserted canonicalize ACCEPTS non-integer floats
+      // (documented divergence from Python). Post-SAN-527, canonicalize matches
+      // Python's canonical_json_bytes behavior and the spec section 3.2 normative
+      // requirement: "MUST reject any JSON value that is a floating-point number
+      // in signing and hashing contexts." This test asserts the alignment.
       fc.assert(
         fc.property(
-          fc.double({
-            min: -1e6,
-            max: 1e6,
-            noNaN: true,
-            noDefaultInfinity: true,
-          }),
+          fc.double({ min: -1e6, max: 1e6, noNaN: true, noDefaultInfinity: true }),
           (f) => {
-            fc.pre(f !== Math.floor(f)); // filter: must be a non-integer float
-            // canonicalize itself does not throw — it delegates non-integer
-            // floats to JSON.stringify, which serializes them as-is (e.g.,
-            // "1.5", "0.25", or even "-5e-324" for very small subnormals in
-            // exponential notation). We assert only that it returns a string
-            // without throwing; the form of the output varies.
-            const result = canonicalize(f);
-            expect(typeof result).toBe("string");
+            fc.pre(!Number.isInteger(f));  // only non-integer cases
+            expect(() => canonicalize(f)).toThrow(TypeError);
           },
         ),
         fcParams,

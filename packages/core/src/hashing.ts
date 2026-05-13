@@ -19,11 +19,70 @@ export const EMPTY_HASH =
 // ── Canonicalization ─────────────────────────────────────────────────
 
 /**
+ * Reject non-integer floats; coerce integer-valued floats to int (spec section 3.2).
+ *
+ * Mirrors Python's sanna.hashing.normalize_floats. Applied recursively to nested
+ * arrays + objects. Booleans pass through unchanged (JS booleans are not Numbers,
+ * unlike Python where bool is a subclass of int). BigInt is rejected explicitly
+ * (JS-specific type; Sanna receipts use the Number type only).
+ *
+ * - Integer-valued numbers (1.0, 71.0) -> int equivalents (1, 71). In JS, 1.0
+ *   and 1 are the same Number; preserved as-is.
+ * - Negative zero (-0) -> 0
+ * - NaN -> throw TypeError("NaN is not allowed in canonical JSON")
+ * - Infinity / -Infinity -> throw TypeError("Infinity is not allowed...")
+ * - Non-integer floats (1.5, 3.14) -> throw TypeError
+ * - BigInt (123n) -> throw TypeError (Sanna receipts use Number, not BigInt)
+ *
+ * Cross-SDK byte parity (spec section 3.2): conforming implementations MUST reject
+ * any JSON value that is a floating-point number in signing and hashing contexts.
+ * canonicalize is a hashing context.
+ */
+function normalizeFloats(obj: unknown): unknown {
+  if (typeof obj === "boolean") return obj;  // pass through; JS boolean is not Number
+  if (typeof obj === "bigint") {
+    throw new TypeError(
+      `BigInt not allowed in canonical JSON (Sanna receipts use Number type only): ${obj}n`,
+    );
+  }
+  if (typeof obj === "number") {
+    if (!Number.isFinite(obj)) {
+      if (Number.isNaN(obj)) {
+        throw new TypeError("NaN is not allowed in canonical JSON");
+      }
+      throw new TypeError(`Infinity is not allowed in canonical JSON: ${obj}`);
+    }
+    if (Object.is(obj, -0)) {
+      return 0;  // -0 -> 0 (matches Python normalize_floats)
+    }
+    if (Number.isInteger(obj)) {
+      return obj;  // JS already represents 1.0 and 1 as the same Number; preserve
+    }
+    throw new TypeError(
+      `Non-integer float not allowed in canonical JSON: ${obj}`,
+    );
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((v) => normalizeFloats(v));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      result[k] = normalizeFloats(v);
+    }
+    return result;
+  }
+  return obj;  // null, string, undefined pass through
+}
+
+/**
  * RFC 8785 JSON Canonicalization Scheme.
  * Returns a deterministic JSON string with sorted keys and no whitespace.
+ * Rejects non-integer floats per spec section 3.2.
  */
 export function canonicalize(obj: unknown): string {
-  const result = jcs(obj);
+  const normalized = normalizeFloats(obj);
+  const result = jcs(normalized);
   if (result === undefined) {
     throw new Error("canonicalize: input is not JSON-serializable");
   }
