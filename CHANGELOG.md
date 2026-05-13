@@ -1,3 +1,25 @@
+## [Unreleased] -- 2026-05-12 (SAN-294)
+
+### Added
+
+- **`packages/core/tests/property-crypto.test.ts`**: property-based test suite using fast-check (^3.20.0 added to `@sanna-ai/core` dev deps). TypeScript mirror of SAN-293 (Hypothesis-based PBT in sanna-repo; merged 2026-05-12 as 2ffd764). 30 tests across 10 property categories:
+  1. `canonicalize` invariant under dict key reordering (key-sorted output)
+  2. `hashContent` NFC-scope invariance (ADR-004 normative); `hashObj` NFC byte-differentiation (no NFC normalization inside objects)
+  3. `computeFingerprints` deterministic on repeat calls (3a) and stable across canonical-JSON round-trip (3b)
+  4. `[] vs null` produces distinct fingerprints for `parent_receipts` (cv=6) and `agent_identity.privilege_scope` (cv=10, spec Section 2.19 optional array-of-strings field)
+  5. Integer-valued numbers serialize without decimal point — cross-SDK byte-parity with Python's int coercion (5a); non-integer floats are accepted by `canonicalize` (serialized as JSON) but rejected by the signing path via `sanitizeForSigning` to prevent cross-SDK divergence (5b)
+  6. `NaN`, `+Infinity`, `-Infinity` all throw in `canonicalize` (three explicit cases)
+  7. `sign` + `verify` round-trip on arbitrary Buffer; tampered message and tampered signature both fail verification
+  8. cv-aware field-count dispatch: cv=5→12-field, cv=6/7→14-field, cv=8→16-field, cv=9→20-field, cv=10→21-field (verified by differential receipt pairs at each boundary)
+  9. Redaction marker shape (spec Section 2.11.1): fixture-based byte-parity against `spec/fixtures/gateway-redaction-vectors.json` (cross-SDK canonical source from SAN-516); PBT on arbitrary strings; NFC-invariance of markers
+  10. Fingerprint cross-site parity: static-analysis test (10a) asserts all four consumers (`verifier.ts`, `aarm.ts`, `redaction.ts`, `bundle.ts`) import `computeFingerprints` from `./receipt.js` with no inline declarations; sample-equality integration (10b) runs `applyRedactionMarkers` and verifies stored fingerprint matches a direct `computeFingerprints` call on the updated receipt
+
+  sanna-ts is centralized on `computeFingerprints`; static-analysis test (10a) catches drift if any consumer copies the function inline. Companion SAN-524 brings sanna-repo to equivalent centralization parity.
+
+  `SANNA_FAST_CHECK_NUM_RUNS` env var overrides the default 100 examples per property for nightly extended runs. Per-test timeout is 30s. Extended 1000-run pass confirmed clean.
+
+  Pairs with: SAN-293 (sanna-repo Hypothesis PBT; merged 2026-05-12 as 2ffd764).
+
 ## [Unreleased] -- 2026-05-12 (SAN-516 PR 3 of 3)
 
 ### Added (BACKWARD-INCOMPATIBLE VERIFIER TIGHTENING)
