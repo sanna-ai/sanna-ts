@@ -14,7 +14,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 import { canonicalize, hashObj } from "./hashing.js";
-import { verify, getKeyId } from "./crypto.js";
+import { verify, getKeyId, sanitizeForSigning } from "./crypto.js";
 import { computeFingerprints } from "./receipt.js";
 import type { VerificationResult, Check } from "./types.js";
 import {
@@ -22,24 +22,6 @@ import {
   verifyInvocationAnomalyReceipt,
   VALID_ANOMALY_EVENT_TYPES,
 } from "./verifier-manifest.js";
-
-// ── Sanitize helper (same as receipt.ts) ─────────────────────────────
-
-function sanitizeForSigning(obj: unknown): unknown {
-  if (typeof obj === "number") {
-    if (!Number.isFinite(obj)) throw new Error(`Non-finite number: ${obj}`);
-    if (Number.isInteger(obj)) return obj;
-    if (obj === Math.trunc(obj)) return Math.trunc(obj);
-    throw new Error(`Non-integer float: ${obj}`);
-  }
-  if (Array.isArray(obj)) return obj.map((v) => sanitizeForSigning(v));
-  if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) result[k] = sanitizeForSigning(v);
-    return result;
-  }
-  return obj;
-}
 
 // ── Regex patterns ───────────────────────────────────────────────────
 

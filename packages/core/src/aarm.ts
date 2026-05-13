@@ -12,7 +12,7 @@
 import type { KeyObject } from "node:crypto";
 
 import { computeFingerprints } from "./receipt.js";
-import { verify, getKeyId } from "./crypto.js";
+import { verify, getKeyId, sanitizeForSigning } from "./crypto.js";
 import { canonicalize } from "./hashing.js";
 
 // Decision-enum mapping table (code primitive per SAN-356 G2).
@@ -48,24 +48,6 @@ export interface AarmReport {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────
-
-function sanitizeForSigning(obj: unknown): unknown {
-  if (typeof obj === "number") {
-    if (!Number.isFinite(obj)) throw new Error(`Non-finite number: ${obj}`);
-    if (Number.isInteger(obj)) return obj;
-    if (obj === Math.trunc(obj)) return Math.trunc(obj);
-    throw new Error(`Non-integer float: ${obj}`);
-  }
-  if (Array.isArray(obj)) return obj.map((v) => sanitizeForSigning(v));
-  if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-      result[k] = sanitizeForSigning(v);
-    }
-    return result;
-  }
-  return obj;
-}
 
 function verifyFingerprintForAarm(
   receipt: Record<string, unknown>,
