@@ -13,6 +13,25 @@
 import { createHash, generateKeyPairSync, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify, KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 
+// SAN-537: sanitizeForSigning is the signing-prep-layer name for the float
+// sanitization that normalizeFloats performs at the canonical-JSON-layer.
+// Post-SAN-527 (normalizeFloats added to hashing.ts), the two functions are
+// functionally equivalent; this alias unifies them under both names for
+// backward-compatible call-site API + clear-intent in signing paths.
+//
+// Behavioral note: vs the three pre-SAN-537 inline implementations, this
+// alias is MORE strict at two edges:
+//   - -0 normalizes to 0 (was: returned -0 unchanged)
+//   - BigInt throws TypeError (was: returned unchanged; broke at canonicalize)
+// Both are correctness-positive; documented in the SAN-537 commit.
+//
+// Error-message wording: previously constitution.ts's sanitizeForSigning
+// used "in signed content" qualifier (e.g., "Non-integer float in signed
+// content: 1.5"). The unified normalizeFloats uses "in canonical JSON"
+// wording. Behaviorally identical; minor text change for any caller
+// parsing the error string for context.
+export { normalizeFloats as sanitizeForSigning } from "./hashing.js";
+
 export type { KeyObject } from "node:crypto";
 
 // ── Key generation ───────────────────────────────────────────────────

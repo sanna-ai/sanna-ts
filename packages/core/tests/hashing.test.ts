@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { EMPTY_HASH, hashContent, hashBytes, hashObj, canonicalize } from "../src/hashing.js";
+import { EMPTY_HASH, hashContent, hashBytes, hashObj, canonicalize, normalizeFloats } from "../src/hashing.js";
+import { sanitizeForSigning } from "../src/crypto.js";
 
 const FIXTURES = resolve(__dirname, "../../../spec/fixtures");
 const golden = JSON.parse(readFileSync(resolve(FIXTURES, "golden-hashes.json"), "utf-8"));
@@ -63,6 +64,16 @@ describe("hashObj", () => {
   it("canonicalize sorts keys", () => {
     const c = canonicalize({ z: 1, a: 2 });
     expect(c).toBe('{"a":2,"z":1}');
+  });
+});
+
+describe("SAN-537: sanitizeForSigning alias identity", () => {
+  it("sanitizeForSigning is the canonical normalizeFloats (same callable reference)", () => {
+    // ES module re-export creates a binding to the same function object.
+    // If a future refactor wraps the alias in a local function, this test
+    // fails -- catches the drift-mode where a wrapper silently introduces
+    // semantic divergence.
+    expect(sanitizeForSigning).toBe(normalizeFloats);
   });
 });
 

@@ -1,3 +1,18 @@
+## [Unreleased] -- 2026-05-13 (SAN-537)
+
+### Changed
+
+- **`sanitizeForSigning`** is now a single canonical re-export in `@sanna-ai/core`
+  (`packages/core/src/crypto.ts`), aliasing `normalizeFloats` from `hashing.ts`.
+  Removes three inline duplicate implementations that existed in `aarm.ts`,
+  `constitution.ts`, and `verifier.ts`. Net reduction in source lines; behavior
+  preserved at all existing call sites. Two correctness-positive edge-case
+  improvements: `-0` now normalizes to `0`, and `BigInt` throws `TypeError`
+  at the sanitization layer (rather than passing through to JCS). Mirrors
+  SAN-524 centralization methodology from sanna-repo. (SAN-537)
+
+---
+
 ## [Unreleased] -- 2026-05-13 (SAN-527)
 
 ### Changed

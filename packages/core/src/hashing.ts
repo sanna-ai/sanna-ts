@@ -38,7 +38,7 @@ export const EMPTY_HASH =
  * any JSON value that is a floating-point number in signing and hashing contexts.
  * canonicalize is a hashing context.
  */
-function normalizeFloats(obj: unknown): unknown {
+export function normalizeFloats(obj: unknown): unknown {
   if (typeof obj === "boolean") return obj;  // pass through; JS boolean is not Number
   if (typeof obj === "bigint") {
     throw new TypeError(

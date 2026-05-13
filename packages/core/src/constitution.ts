@@ -11,7 +11,7 @@ import yaml from "js-yaml";
 import type { KeyObject } from "node:crypto";
 
 import { canonicalize, hashContent, hashObj } from "./hashing.js";
-import { sign, verify, getKeyId } from "./crypto.js";
+import { sign, verify, getKeyId, sanitizeForSigning } from "./crypto.js";
 import type {
   Constitution,
   Boundary,
@@ -1067,32 +1067,6 @@ export function constitutionToSignableDict(c: Constitution, signingVersion: numb
   if (signingVersion === 1) return _constitutionToSignableDictV1(c);
   if (signingVersion === 2) return _constitutionToSignableDictV2(c);
   throw new Error(`Unsupported signing_version: ${signingVersion}`);
-}
-
-/**
- * Sanitize a value tree for signing: convert exact-integer floats to int,
- * reject non-integer floats. Matches Python's `sanitize_for_signing()`.
- */
-function sanitizeForSigning(obj: unknown): unknown {
-  if (typeof obj === "number") {
-    if (!Number.isFinite(obj)) {
-      throw new Error(`Non-finite number in signed content: ${obj}`);
-    }
-    if (Number.isInteger(obj)) return obj;
-    if (obj === Math.trunc(obj)) return Math.trunc(obj);
-    throw new Error(`Non-integer float in signed content: ${obj}`);
-  }
-  if (Array.isArray(obj)) {
-    return obj.map((v) => sanitizeForSigning(v));
-  }
-  if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      result[k] = sanitizeForSigning(v);
-    }
-    return result;
-  }
-  return obj;
 }
 
 /**
