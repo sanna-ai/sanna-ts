@@ -77,6 +77,84 @@ describe("SAN-537: sanitizeForSigning alias identity", () => {
   });
 });
 
+describe("SAN-538: -0 + BigInt normalization regression guards", () => {
+  // Regression guards for behaviors shipped via SAN-527 (introduced
+  // normalizeFloats) and SAN-537 (sanitizeForSigning alias to the same
+  // canonical). Without these tests, future refactors of normalizeFloats
+  // could silently regress either edge:
+  //   - -0 normalization: pre-SAN-527, Number.isInteger(-0) returned true
+  //     and the function returned -0 unchanged. canonicalize would then
+  //     serialize "-0" instead of "0", producing a different signing
+  //     input than the equivalent +0 -- a determinism gap that would
+  //     break cross-SDK byte parity.
+  //   - BigInt rejection: pre-SAN-527, BigInt fell through `return obj`
+  //     and broke downstream at JSON.stringify with an unclear "BigInt
+  //     not serializable" error rather than a clean TypeError at the
+  //     boundary.
+  //
+  // The alias-identity test above (SAN-537) catches structural drift
+  // (someone wraps the alias in a local function). These tests catch
+  // semantic drift (someone modifies normalizeFloats to no longer
+  // normalize -0 OR to no longer throw on BigInt).
+  //
+  // === does not distinguish -0 from 0 in JavaScript; Object.is is used
+  // to verify true normalization rather than allowing the trivial pass.
+
+  it("normalizeFloats normalizes -0 to 0 (scalar)", () => {
+    const result = normalizeFloats(-0);
+    expect(result).toBe(0);
+    expect(Object.is(result, 0)).toBe(true);
+    expect(Object.is(result, -0)).toBe(false);
+  });
+
+  it("sanitizeForSigning normalizes -0 to 0 (scalar; via alias)", () => {
+    const result = sanitizeForSigning(-0);
+    expect(result).toBe(0);
+    expect(Object.is(result, 0)).toBe(true);
+    expect(Object.is(result, -0)).toBe(false);
+  });
+
+  it("canonicalize serializes -0 as '0' (scalar + nested)", () => {
+    expect(canonicalize(-0)).toBe("0");
+    expect(canonicalize({ k: -0 })).toBe('{"k":0}');
+    expect(canonicalize([-0, 1, -0])).toBe("[0,1,0]");
+  });
+
+  it("normalizeFloats normalizes -0 nested in object", () => {
+    const result = normalizeFloats({ k: -0 }) as { k: number };
+    expect(result).toEqual({ k: 0 });
+    expect(Object.is(result.k, 0)).toBe(true);
+    expect(Object.is(result.k, -0)).toBe(false);
+  });
+
+  it("normalizeFloats normalizes -0 nested in array", () => {
+    const result = normalizeFloats([-0, 1, -0]) as number[];
+    expect(result).toEqual([0, 1, 0]);
+    expect(Object.is(result[0], 0)).toBe(true);
+    expect(Object.is(result[2], 0)).toBe(true);
+  });
+
+  it("normalizeFloats throws TypeError on BigInt scalar", () => {
+    expect(() => normalizeFloats(123n)).toThrow(TypeError);
+  });
+
+  it("sanitizeForSigning throws TypeError on BigInt scalar (via alias)", () => {
+    expect(() => sanitizeForSigning(123n)).toThrow(TypeError);
+  });
+
+  it("canonicalize throws TypeError on BigInt scalar", () => {
+    expect(() => canonicalize(123n)).toThrow(TypeError);
+  });
+
+  it("normalizeFloats throws TypeError on BigInt nested in object", () => {
+    expect(() => normalizeFloats({ k: 123n })).toThrow(TypeError);
+  });
+
+  it("normalizeFloats throws TypeError on BigInt nested in array", () => {
+    expect(() => normalizeFloats([1, 123n, 2])).toThrow(TypeError);
+  });
+});
+
 describe("constitution content_hash (golden)", () => {
   it("minimal.yaml content_hash is deterministic", () => {
     const content = readFileSync(
