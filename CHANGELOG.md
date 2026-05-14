@@ -1,3 +1,17 @@
+## [Unreleased] -- 2026-05-14 (SAN-538)
+
+### Added
+
+- **Regression tests for `-0` normalization + BigInt rejection at the signing-prep boundary** (SAN-538): 10 new test cases in `packages/core/tests/hashing.test.ts` covering `normalizeFloats` / `sanitizeForSigning` / `canonicalize` for both edges (scalar + nested in object/array). Closes the test-coverage gap surfaced during SAN-537 (which added the alias-identity test catching structural drift; this PR adds semantic-drift coverage). The corrected behavior was shipped by SAN-527 + SAN-537; this PR ensures future refactors cannot silently regress without test failures. `Object.is` checks are used alongside `===` to defeat JavaScript's `-0 === 0` trivial pass.
+
+### Notes
+
+- No source changes. No behavior changes. Pure test coverage addition.
+- Tests would fail if `normalizeFloats` were modified to no longer normalize `-0` OR to no longer throw `TypeError` on BigInt -- explicit regression guards per SAN-538 ACs 4 and 5.
+- Cross-references: SAN-538 (this ticket), SAN-527 (introduced `normalizeFloats`), SAN-537 (centralized via `sanitizeForSigning` alias), SAN-294 (TS crypto PBT covering NaN/Infinity but not these edges).
+
+---
+
 ## [Unreleased] -- 2026-05-13 (SAN-537)
 
 ### Changed
