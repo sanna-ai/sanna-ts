@@ -93,10 +93,10 @@ const SRC_DIR = resolve(__dirname, "../src");
 
 // ── Shared strategies ─────────────────────────────────────────────────
 
-// fc.fullUnicodeString generates well-formed Unicode (no lone surrogates).
+// fast-check 4.x: fc.string with unit='binary' generates well-formed Unicode (no lone surrogates).
 // Equivalent to Python Hypothesis's
 // st.text(alphabet=st.characters(blacklist_categories=("Cs",))).
-const jsonSafeText = fc.fullUnicodeString({ maxLength: 200 });
+const jsonSafeText = fc.string({ unit: 'binary', maxLength: 200 });
 
 const jsonValues: fc.Arbitrary<unknown> = fc.letrec((tie) => ({
   value: fc.oneof(
