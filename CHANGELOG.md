@@ -1,5 +1,21 @@
 ## [Unreleased] -- 2026-05-29 (SAN-745)
 
+### Added
+
+- **`packages/core/tests/escalate-conformance.test.ts`**: cross-SDK escalate-disposition conformance test. Drives the fetch + child_process interceptors with a must_escalate decision in enforce mode and asserts the emitted receipt matches the shared protocol fixture (`spec/fixtures/multi-surface-vectors.json` -> `escalate_disposition_vectors`) and that the action did not execute. The sanna-repo (Python) suite asserts the same vector (SAN-745 PR3b), making the cross-SDK escalate agreement a single shared contract.
+
+### Changed
+
+- **`spec` submodule**: bumped to `4b73ec3` (sanna-protocol main) to consume `escalate_disposition_vectors` (SAN-745).
+
+### Notes
+
+- `assurance` is not asserted by the conformance test: TS interceptors emit it, Python interceptors do not yet (SAN-765). The agreed disposition fields are asserted (event_type, enforcement.action, enforcement_mode, status, enforcement_surface, invariants_scope, action_hash).
+
+---
+
+## [Unreleased] -- 2026-05-29 (SAN-745)
+
 ### Fixed
 
 - **Enforce mode now blocks `must_escalate` dispositions in the fetch and child_process interceptors** (SAN-745). Previously a constitution decision of `escalate` was non-blocking in enforce mode on the fetch interceptor and on the child_process direct-argv entrypoints (`spawn`, `spawnSync`, `exec`/`execSync` without shell operators, `execFile`, `execFileSync`, `fork`), so an action requiring human approval executed anyway. Escalate now fails closed exactly like `halt`: the action does not execute, and the interceptor emits an `*_escalated` receipt (`enforcement.action: "escalated"`, `status: "WARN"`, `assurance: "partial"`, halted action hash) before raising. Matches the Python SDK and the in-pipeline escalate blocking already present for shell commands.
