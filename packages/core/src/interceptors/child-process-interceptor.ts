@@ -235,7 +235,11 @@ function emitReceipt(params: {
 function shouldExecute(decision: string): boolean {
   const mode = _state.options?.mode ?? "enforce";
   if (mode === "passthrough" || mode === "audit") return true;
-  if (decision === "halt") return false;
+  // SAN-745: escalate fails closed in enforce mode, matching the Python SDK and the
+  // in-pipeline escalate block in evaluateShellPipeline. Previously escalate fell
+  // through to execute on the direct-argv entrypoints (spawn/spawnSync/execFile/
+  // execFileSync/fork) and on exec/execSync commands without shell operators.
+  if (decision === "halt" || decision === "escalate") return false;
   return true;
 }
 
