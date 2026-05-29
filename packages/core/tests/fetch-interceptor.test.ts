@@ -6,6 +6,16 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
+// Prevent real DNS lookups in tests. The SSRF check in patchedFetch resolves hostnames
+// via node:dns/promises; on some machines test domains like internal.corp.com resolve to
+// ICANN collision IPs (127.0.53.53), which would cause SSRF to throw before the interceptor
+// emits any receipt. Returning empty arrays is equivalent to NXDOMAIN -- the SSRF guard
+// passes (no private IPs found) and the interceptor logic runs normally.
+vi.mock("node:dns/promises", () => ({
+  resolve4: vi.fn().mockResolvedValue([]),
+  resolve6: vi.fn().mockResolvedValue([]),
+}));
+
 import { patchFetch, unpatchFetch } from "../src/interceptors/fetch-interceptor.js";
 import { evaluateApiAuthority, checkApiInvariants } from "../src/interceptors/api-authority.js";
 import { loadConstitution, parseConstitution } from "../src/constitution.js";
@@ -285,6 +295,56 @@ describe("patchFetch — authority enforcement", () => {
     await expect(
       fetch("https://api.example.com/admin/users"),
     ).rejects.toThrow(TypeError);
+  });
+
+  it("blocks must_escalate in enforce mode (fails closed)", async () => {
+    const sink = makeSink();
+    const mock = await patchWithMock(STRICT_CONSTITUTION, sink);
+
+    // API003: POST https://internal.corp.com/* is must_escalate. In enforce mode it must
+    // fail closed -- the real (mock) fetch must NEVER be called.
+    await expect(
+      fetch("https://internal.corp.com/api/v1", { method: "POST", body: "x" }),
+    ).rejects.toThrow(TypeError);
+
+    expect(mock).not.toHaveBeenCalled();
+
+    const receipt = firstInvocationReceipt(sink);
+    expect(receipt.event_type).toBe("api_invocation_escalated");
+    expect((receipt as unknown as Record<string, unknown>).enforcement).toMatchObject({ action: "escalated" });
+    expect(receipt.status).toBe("WARN");
+    expect(receipt.assurance).toBe("partial");
+    expect(receipt.action_hash).toBe(hashObj({
+      body_hash: EMPTY_HASH,
+      response_headers_keys: [],
+      status_code: null,
+    }));
+  });
+
+  it("escalate block throws fetch-failed (anti-enumeration parity with halt)", async () => {
+    const sink = makeSink();
+    await patchWithMock(STRICT_CONSTITUTION, sink);
+
+    try {
+      await fetch("https://internal.corp.com/api/v1", { method: "POST" });
+      expect.unreachable("Should have thrown");
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(TypeError);
+      expect((err as TypeError).message).toContain("fetch failed");
+    }
+  });
+
+  it("audit mode executes must_escalate (does NOT fail closed)", async () => {
+    const sink = makeSink();
+    const mock = await patchWithMock(STRICT_CONSTITUTION, sink, { mode: "audit" });
+
+    const res = await fetch("https://internal.corp.com/api/v1", { method: "POST", body: "x" });
+    expect(res.status).toBe(200);
+    expect(mock).toHaveBeenCalledOnce();
+
+    const receipt = firstInvocationReceipt(sink);
+    expect(receipt.event_type).toBe("api_invocation_escalated");
+    expect(receipt.assurance).toBe("full");
   });
 
   it("throws TypeError for unlisted URL in strict mode", async () => {
@@ -939,6 +999,11 @@ describe("patchFetch — HALT-regression guard", () => {
       await fetch("https://unknown.com/blocked");
     } catch { /* expected */ }
 
+    // Case 3: escalate (must_escalate endpoint, enforce mode)
+    try {
+      await fetch("https://internal.corp.com/api/v1", { method: "POST" });
+    } catch { /* expected */ }
+
     // Assert HALT never appears in any receipt
     for (const r of sink.receipts) {
       const json = JSON.stringify(r);
@@ -950,6 +1015,11 @@ describe("patchFetch — HALT-regression guard", () => {
     const haltReceipt = sink.receipts.find((r) => r.event_type === "api_invocation_halted");
     expect(haltReceipt).toBeDefined();
     expect(haltReceipt!.status).toBe("FAIL");
+
+    // Escalate receipt: WARN status, and "HALT" still never appears.
+    const escalateReceipt = sink.receipts.find((r) => r.event_type === "api_invocation_escalated");
+    expect(escalateReceipt).toBeDefined();
+    expect(escalateReceipt!.status).toBe("WARN");
   });
 });
 

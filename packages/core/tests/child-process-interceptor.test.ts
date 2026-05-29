@@ -322,7 +322,7 @@ describe("patchChildProcess — authority enforcement", () => {
     }
   });
 
-  it("throws ENOENT for must_escalate in enforce mode", async () => {
+  it("blocks must_escalate in enforce mode via execSync (no shell operators)", async () => {
     const sink = makeSink();
     await patchChildProcess({
       constitutionPath: STRICT_CONSTITUTION,
@@ -331,15 +331,70 @@ describe("patchChildProcess — authority enforcement", () => {
       mode: "enforce",
     });
 
-    // docker is must_escalate — but in enforce mode without approval, must_escalate
-    // should still emit receipt. The decision itself is "escalate" not "halt".
-    // The spec says escalate doesn't halt by default, so this should succeed
-    // (escalate is not halt — it's a signal to the caller)
-    // Actually re-reading the spec: must_escalate results in "escalate" decision
-    // which is NOT "halt", so shouldExecute returns true
     const cp = require_("node:child_process");
-    // Use a binary that actually exists but is must_escalate
-    // docker may not be installed — let's test the receipt instead
+    // docker is must_escalate (CLI004). "docker run nginx" has no shell operators, so it
+    // falls through to shouldExecute (not evaluateShellPipeline). In enforce mode it must
+    // fail closed: the interceptor throws ENOENT BEFORE spawning, so this is robust whether
+    // or not docker is installed.
+    try {
+      cp.execSync("docker run nginx", { encoding: "utf-8" });
+      expect.unreachable("Should have thrown -- escalate must fail closed in enforce mode");
+    } catch (err: unknown) {
+      const e = err as NodeJS.ErrnoException;
+      expect(e.code).toBe("ENOENT");
+      expect(e.errno).toBe(-2);
+    }
+
+    const receipt = firstInvocationReceipt(sink);
+    expect(receipt.event_type).toBe("cli_invocation_escalated");
+    expect((receipt as unknown as Record<string, unknown>).enforcement).toMatchObject({ action: "escalated" });
+    // escalate maps to WARN cross-SDK (Python receipt.py + TS receipt.ts) -- NOT FAIL (halt), NOT PASS.
+    expect(receipt.status).toBe("WARN");
+    expect(receipt.assurance).toBe("partial");
+    // Halted action hash -- the action did NOT execute.
+    expect(receipt.action_hash).toBe(hashObj({ exit_code: null, stderr: "", stdout: "" }));
+    expect(JSON.stringify(receipt)).not.toContain('"HALT"');
+  });
+
+  it("blocks must_escalate in enforce mode via spawnSync (direct argv)", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+      mode: "enforce",
+    });
+
+    const cp = require_("node:child_process");
+    // Direct-argv entrypoint never routes through evaluateShellPipeline -- only shouldExecute.
+    // Pre-SAN-745 this executed (fail-open).
+    expect(() => cp.spawnSync("docker", ["run", "nginx"], { encoding: "utf-8" })).toThrow(/ENOENT/);
+
+    const receipt = firstInvocationReceipt(sink);
+    expect(receipt.event_type).toBe("cli_invocation_escalated");
+    expect(receipt.status).toBe("WARN");
+    expect(receipt.assurance).toBe("partial");
+    expect(receipt.action_hash).toBe(hashObj({ exit_code: null, stderr: "", stdout: "" }));
+  });
+
+  it("audit mode executes must_escalate (does NOT fail closed)", async () => {
+    const sink = makeSink();
+    await patchChildProcess({
+      constitutionPath: STRICT_CONSTITUTION,
+      sink,
+      agentId: "test-agent",
+      mode: "audit",
+    });
+
+    const cp = require_("node:child_process");
+    // spawnSync does not throw on a missing binary (returns {error}); the interceptor must
+    // NOT block in audit mode. An escalated receipt is still emitted, but assurance is "full"
+    // because the action was allowed to execute.
+    expect(() => cp.spawnSync("docker", ["--version"], { encoding: "utf-8" })).not.toThrow();
+
+    const receipt = firstInvocationReceipt(sink);
+    expect(receipt.event_type).toBe("cli_invocation_escalated");
+    expect(receipt.assurance).toBe("full");
   });
 
   it("denies unlisted binary in strict mode", async () => {

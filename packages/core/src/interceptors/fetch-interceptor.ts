@@ -354,7 +354,9 @@ async function emitHttpReceipt(params: {
 function shouldExecute(decision: string): boolean {
   const mode = _state.options?.mode ?? "enforce";
   if (mode === "passthrough" || mode === "audit") return true;
-  return decision !== "halt";
+  // SAN-745: escalate fails closed in enforce mode, matching the Python SDK.
+  // Was `decision !== "halt"` (escalate executed = fail-open in an enforcement control).
+  return decision !== "halt" && decision !== "escalate";
 }
 
 // ── Patched fetch ────────────────────────────────────────────────────

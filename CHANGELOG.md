@@ -1,3 +1,15 @@
+## [Unreleased] -- 2026-05-29 (SAN-745)
+
+### Fixed
+
+- **Enforce mode now blocks `must_escalate` dispositions in the fetch and child_process interceptors** (SAN-745). Previously a constitution decision of `escalate` was non-blocking in enforce mode on the fetch interceptor and on the child_process direct-argv entrypoints (`spawn`, `spawnSync`, `exec`/`execSync` without shell operators, `execFile`, `execFileSync`, `fork`), so an action requiring human approval executed anyway. Escalate now fails closed exactly like `halt`: the action does not execute, and the interceptor emits an `*_escalated` receipt (`enforcement.action: "escalated"`, `status: "WARN"`, `assurance: "partial"`, halted action hash) before raising. Matches the Python SDK and the in-pipeline escalate blocking already present for shell commands.
+
+### Notes
+
+- Behavior change: code that previously continued past an `escalate` decision in enforce mode now receives the same simulated failure as a halt (`fetch` -> `TypeError`/`ECONNREFUSED`; child_process -> `ENOENT`). Audit and passthrough modes are unchanged (escalate still executes).
+
+---
+
 ## [Unreleased] -- 2026-05-14 (SAN-538)
 
 ### Added
