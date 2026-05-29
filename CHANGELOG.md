@@ -12,10 +12,6 @@
 
 - `assurance` is not asserted by the conformance test: TS interceptors emit it, Python interceptors do not yet (SAN-765). The agreed disposition fields are asserted (event_type, enforcement.action, enforcement_mode, status, enforcement_surface, invariants_scope, action_hash).
 
----
-
-## [Unreleased] -- 2026-05-29 (SAN-745)
-
 ### Fixed
 
 - **Enforce mode now blocks `must_escalate` dispositions in the fetch and child_process interceptors** (SAN-745). Previously a constitution decision of `escalate` was non-blocking in enforce mode on the fetch interceptor and on the child_process direct-argv entrypoints (`spawn`, `spawnSync`, `exec`/`execSync` without shell operators, `execFile`, `execFileSync`, `fork`), so an action requiring human approval executed anyway. Escalate now fails closed exactly like `halt`: the action does not execute, and the interceptor emits an `*_escalated` receipt (`enforcement.action: "escalated"`, `status: "WARN"`, `assurance: "partial"`, halted action hash) before raising. Matches the Python SDK and the in-pipeline escalate blocking already present for shell commands.
