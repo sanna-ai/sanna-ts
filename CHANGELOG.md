@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-02 (SAN-752)
+
+### Changed
+
+- **README.md**: corrected schema version claims to match the current implementation. Receipt Schema v1.5 (was v1.4): spec_version "1.5" (was "1.4"), checks_version "10" (was "9"), 21-field fingerprint (was 20), adding agent_identity at fingerprint position 21. Schema reference table, example receipt JSON, and cross-language compatibility note updated consistently. Protocol version reference updated to v1.5. (SAN-752)
+
+---
+
 ## [Unreleased] -- 2026-06-02 (SAN-667)
 
 ### Added
