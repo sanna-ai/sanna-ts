@@ -1,6 +1,6 @@
 # Sanna — Trust Infrastructure for AI Agents
 
-Sanna checks reasoning during execution, halts when constraints are violated, and generates portable cryptographic receipts proving governance was enforced. Constitution-as-code: your governance rules live in version-controlled YAML, not in a vendor dashboard.
+Sanna generates portable cryptographic receipts attesting to governance outcomes. The `sannaObserve` wrapper is post-execution detection and attestation -- the wrapped function executes before output checks run, so its side effects are not prevented; the gateway surface enforces governance pre-execution and blocks disallowed actions before they occur. Constitution-as-code: your governance rules live in version-controlled YAML, not in a vendor dashboard.
 
 This is the **TypeScript implementation** of [Sanna Protocol v1.5](https://github.com/sanna-ai/sanna-protocol). For the Python reference implementation, see [sanna-ai/sanna](https://github.com/sanna-ai/sanna).
 
