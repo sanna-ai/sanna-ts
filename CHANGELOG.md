@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-02 (SAN-667)
+
+### Added
+
+- **`packages/core/tests/spec-pin-integrity.test.ts`**: cross-SDK parity -- ports sanna-repo's spec-submodule pin-on-protocol-main guard to sanna-ts. Fails CI if the `spec` submodule is ever pinned to a commit not reachable on sanna-protocol `origin/main` (dangling or unmerged PR-branch HEAD -- supply-chain control). Network-unavailable paths skip on local dev but throw loudly in CI (`CI`/`GITHUB_ACTIONS` env). Matches the invariant enforced by sanna-repo (SAN-667).
+
+---
+
 ## [Unreleased] -- 2026-05-29 (SAN-745)
 
 ### Added
