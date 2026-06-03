@@ -215,7 +215,7 @@ function emitReceipt(params: {
     input_hash: params.inputHash,
     reasoning_hash: params.reasoningHash,
     action_hash: params.actionHash,
-    assurance: params.halted ? "partial" : "full",
+    assurance: "partial", // spec 7.3: authority-only interceptor, reasoning not evaluated
     content_mode: opts.contentMode ?? null,
     workflow_id: opts.workflowId ?? null,
     parent_receipts: opts.parentFingerprint ? [opts.parentFingerprint] : null,

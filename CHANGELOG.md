@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-03 (SAN-765)
+
+### Changed
+
+- **`packages/core/src/interceptors/fetch-interceptor.ts`**, **`packages/core/src/interceptors/child-process-interceptor.ts`**: HTTP and subprocess interceptors now emit `assurance: "partial"` unconditionally, fixing a spec section 7.3 non-conformance. The prior `halted ? "partial" : "full"` emitted `"full"` for executed actions that were never reasoning-evaluated; authority-only interceptors must always emit `"partial"` regardless of outcome. Fingerprint-inert. (SAN-765)
+
+---
+
 ## [Unreleased] -- 2026-06-02 (SAN-752)
 
 ### Changed
