@@ -388,13 +388,13 @@ describe("patchChildProcess — authority enforcement", () => {
 
     const cp = require_("node:child_process");
     // spawnSync does not throw on a missing binary (returns {error}); the interceptor must
-    // NOT block in audit mode. An escalated receipt is still emitted, but assurance is "full"
-    // because the action was allowed to execute.
+    // NOT block in audit mode. An escalated receipt is still emitted, but assurance is "partial"
+    // because reasoning was not evaluated (spec 7.3: authority-only interceptor).
     expect(() => cp.spawnSync("docker", ["--version"], { encoding: "utf-8" })).not.toThrow();
 
     const receipt = firstInvocationReceipt(sink);
     expect(receipt.event_type).toBe("cli_invocation_escalated");
-    expect(receipt.assurance).toBe("full");
+    expect(receipt.assurance).toBe("partial");
   });
 
   it("denies unlisted binary in strict mode", async () => {
@@ -1053,14 +1053,14 @@ describe("generateReceipt — new triad fields", () => {
       input_hash: "abc123",
       reasoning_hash: "def456",
       action_hash: "ghi789",
-      assurance: "full",
+      assurance: "partial",
       context_limitation: "cli_execution",
     });
 
     expect(triadReceipt.input_hash).toBe("abc123");
     expect(triadReceipt.reasoning_hash).toBe("def456");
     expect(triadReceipt.action_hash).toBe("ghi789");
-    expect(triadReceipt.assurance).toBe("full");
+    expect(triadReceipt.assurance).toBe("partial");
     expect(triadReceipt.context_limitation).toBe("cli_execution");
     // Fingerprint unchanged
     expect(triadReceipt.full_fingerprint).toBe(baseReceipt.full_fingerprint);

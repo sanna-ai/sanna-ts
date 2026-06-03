@@ -344,7 +344,7 @@ describe("patchFetch — authority enforcement", () => {
 
     const receipt = firstInvocationReceipt(sink);
     expect(receipt.event_type).toBe("api_invocation_escalated");
-    expect(receipt.assurance).toBe("full");
+    expect(receipt.assurance).toBe("partial");
   });
 
   it("throws TypeError for unlisted URL in strict mode", async () => {
