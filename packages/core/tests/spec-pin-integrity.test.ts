@@ -26,6 +26,11 @@ describe("spec submodule integrity (SAN-667 cross-SDK parity)", () => {
       ctx.skip();
       return;
     }
+    // SAN-789: a shallow submodule clone (depth 1, as in the cross-SDK smoke) lacks the parent chain between
+    // origin/main and an older-but-merged pin, making merge-base --is-ancestor a false negative. Deepen to
+    // full history so the reachability check is reliable at any clone depth.
+    const isShallow = execFileSync("git", ["-C", spec, "rev-parse", "--is-shallow-repository"], { encoding: "utf8" }).trim() === "true";
+    if (isShallow) git(["-C", spec, "fetch", "--unshallow", "origin"]);
     // Assumption: this repo tracks sanna-protocol `main`. If protocol ever adopts
     // release/maintenance branches this repo should track instead, broaden this
     // origin/main assertion to the relevant branch.

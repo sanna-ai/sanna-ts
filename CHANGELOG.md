@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-03 (SAN-789)
+
+### Changed
+
+- **`packages/core/tests/spec-pin-integrity.test.ts`**: harden the spec-pin-integrity test to deepen a shallow submodule clone before the is-ancestor check, fixing a cross-SDK-smoke false negative. A depth-1 clone lacks the parent chain between origin/main and an older-but-merged pin, causing merge-base --is-ancestor to wrongly report the pin unreachable; the fix calls git fetch --unshallow when the submodule is detected as shallow. Genuinely dangling or unmerged pins still fail. (SAN-789, follow-up to SAN-667)
+
+---
+
 ## [Unreleased] -- 2026-06-03 (SAN-765)
 
 ### Changed
