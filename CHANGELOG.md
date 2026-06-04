@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-03 (SAN-765 Phase D3)
+
+### Added
+
+- **`packages/core/tests/allow-conformance.test.ts`** (new): cross-SDK allow-disposition conformance test (SAN-765). Drives the fetch and child_process interceptors with an allowed (can_execute) action in enforce mode and asserts the emitted receipt matches the shared protocol fixture (`allow_disposition_vectors`), including `assurance="partial"` per spec Section 7.3. Companion to the sanna-repo allow-conformance suite; both SDKs now assert the same allowed-path vector. action_hash is not pinned (the executed action's output hash is environment-dependent).
+
+---
+
 ## [Unreleased] -- 2026-06-03 (SAN-765 Phase D2)
 
 ### Changed
