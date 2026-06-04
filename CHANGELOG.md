@@ -1,3 +1,13 @@
+## [Unreleased] -- 2026-06-03 (SAN-765 Phase D2)
+
+### Changed
+
+- **`packages/core/src/verifier.ts`** (`checkSchema`): added spec Section 7.3 assurance rule -- an authority-only receipt that carries a Receipt Triad must have `assurance="partial"`; any other value is a verifier error. Error text matches Python `verify.py` byte-for-byte for cross-SDK consistency (SAN-765, lockstep with sanna-repo C2). Allow-list consumer assertions land in Phase D3.
+- **`packages/core/tests/verifier-7.3-assurance.test.ts`** (new): two-case verifier rule test driven by a real allowed-action interceptor receipt (`echo hello` via child_process interceptor, `invariants_scope=authority_only`, `assurance=partial`). Asserts no 7.3 error on the valid receipt and the exact 7.3 message + `valid=false` on a tampered `assurance=full` copy.
+- **`packages/core/tests/escalate-conformance.test.ts`**: added `assurance: string` to the `DispositionVector.expected` interface and replaced the placeholder comment with `expect(receipt.assurance).toBe(expected.assurance)`, closing the SAN-765 cross-SDK conformance gap in this test.
+
+---
+
 ## [Unreleased] -- 2026-06-03 (SAN-765 Phase D1)
 
 ### Changed

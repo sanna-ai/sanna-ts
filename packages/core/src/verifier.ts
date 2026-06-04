@@ -127,6 +127,22 @@ function checkSchema(receipt: Record<string, unknown>): string[] {
     }
   }
 
+  // Interceptor assurance (SAN-765 / spec Section 7.3): an authority-only receipt with a top-level Receipt
+  // Triad never ran reasoning checks, so assurance must be "partial". Error text MUST match Python verify.py
+  // byte-for-byte (cross-SDK consistency).
+  const hasTopTriad =
+    typeof receipt.input_hash === "string" ||
+    typeof receipt.reasoning_hash === "string" ||
+    typeof receipt.action_hash === "string";
+  if (receipt.invariants_scope === "authority_only" && hasTopTriad) {
+    if (receipt.assurance !== "partial") {
+      errors.push(
+        "Authority-only receipt (invariants_scope=authority_only) with a Receipt Triad " +
+          "must have assurance='partial' per spec Section 7.3 (no reasoning checks ran).",
+      );
+    }
+  }
+
   // receipt_id: UUID v4
   const rid = String(receipt.receipt_id ?? "");
   if (rid && !UUID_V4_RE.test(rid)) {
