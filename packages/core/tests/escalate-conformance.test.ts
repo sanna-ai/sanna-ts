@@ -32,6 +32,7 @@ interface DispositionVector {
   expected: {
     blocked: boolean; event_type: string; enforcement_action: string; enforcement_mode: string;
     status: string; enforcement_surface: string; invariants_scope: string; action_hash: string;
+    assurance: string;
   };
 }
 
@@ -52,7 +53,7 @@ function assertReceiptMatches(receipt: any, expected: DispositionVector["expecte
   expect(receipt.enforcement_surface).toBe(expected.enforcement_surface);
   expect(receipt.invariants_scope).toBe(expected.invariants_scope);
   expect(receipt.action_hash).toBe(expected.action_hash);
-  // assurance intentionally NOT asserted -- cross-SDK divergence tracked in SAN-765.
+  expect(receipt.assurance).toBe(expected.assurance);
 }
 
 let realFetch: typeof globalThis.fetch;
