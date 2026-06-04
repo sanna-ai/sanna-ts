@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-03 (SAN-765 Phase D1)
+
+### Changed
+
+- **`spec`** (submodule): bumped pin to 323c7af (protocol main HEAD), picking up spec 7.3 assurance-when-triad enforcement and cross-SDK conformance vectors (SAN-765 #49). Verifier enforcement in sanna-ts lands in Phase D2.
+
+---
+
 ## [Unreleased] -- 2026-06-03 (SAN-789)
 
 ### Changed
