@@ -50,11 +50,11 @@
     "ajv-formats": "^3.0.1",
     "better-sqlite3": "^12.10.0",
     "canonicalize": "^3.0.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.2.0",
     "safe-regex2": "^5.1.1"
   },
   "devDependencies": {
     "fast-check": "^4.8.0",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.8"
   }
 }
