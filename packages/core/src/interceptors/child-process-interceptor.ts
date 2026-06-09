@@ -22,7 +22,8 @@ import type { RedactionConfig } from "../redaction.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
-type AnyFn = (...args: unknown[]) => unknown;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pass-through monkeypatch type: .apply() must preserve the original API's return typing, as Function did (SAN-519)
+type AnyFn = (...args: any[]) => any;
 
 export interface PatchOptions {
   constitutionPath: string;

@@ -1,7 +1,7 @@
 ## [Unreleased] -- 2026-06-09 (SAN-519)
 
 ### Changed
-- Cleared all pre-existing lint errors across packages/*/src (tseslint recommended); 2 targeted inline suppressions with rationale (heuristic-judge.ts interface-required params); zero behavior changes (full suite unchanged: 73 files, 1545 tests).
+- Cleared all pre-existing lint errors across packages/*/src (tseslint recommended); 4 targeted inline suppressions with rationale (heuristic-judge.ts interface-required params; AnyFn pass-through alias uses any (not unknown) so .apply() call sites keep the original Function semantics -- the unknown variant failed the DTS typecheck (caught by CI Build)); zero behavior changes (full suite unchanged: 73 files, 1545 tests).
 - CI now gates `npm run lint` (new step after Build) so lint errors cannot accumulate silently.
 
 ---
