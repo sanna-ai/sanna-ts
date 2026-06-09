@@ -1,3 +1,16 @@
+## [Unreleased] -- 2026-06-09 (SAN-796 / SAN-797 / SAN-798)
+
+### Security
+- Bump hono (^4.12.25) and qs (^6.15.2) out of the MODERATE advisory ranges (transitive via the gateway @modelcontextprotocol/sdk path). Closes SAN-798. Dep-update SLA SAN-501 / SOC 2 6.6 evidence trail.
+
+### Changed
+- Declare `tsx` as a devDependency so a clean offline `npm ci && npm test` no longer relies on npx auto-fetching it (SAN-797).
+
+### Fixed
+- README quickstart: install `@sanna-ai/cli` for the `sanna` commands (core has no bin); corrected the gateway invocation; version notes 1.4.0 -> 1.5.0 (SAN-796 Part 2).
+
+---
+
 ## [Unreleased] -- 2026-06-03 (SAN-765 Phase D3)
 
 ### Added
