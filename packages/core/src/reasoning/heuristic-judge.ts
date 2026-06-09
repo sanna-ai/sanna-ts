@@ -46,7 +46,9 @@ export class HeuristicJudge implements BaseJudge {
     toolName: string,
     _args: Record<string, unknown>,
     justification: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by JudgeProvider interface signature (SAN-519)
     _invariantId: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by JudgeProvider interface signature (SAN-519)
     _constitutionContext?: Record<string, unknown>,
   ): Promise<JudgeResult> {
     const start = performance.now();

@@ -22,6 +22,9 @@ import type { RedactionConfig } from "../redaction.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pass-through monkeypatch type: .apply() must preserve the original API's return typing, as Function did (SAN-519)
+type AnyFn = (...args: any[]) => any;
+
 export interface PatchOptions {
   constitutionPath: string;
   sink: ReceiptSink;
@@ -36,7 +39,7 @@ export interface PatchOptions {
 
 interface InterceptorState {
   active: boolean;
-  originals: Record<string, Function>;
+  originals: Record<string, AnyFn>;
   constitution: Constitution | null;
   sink: ReceiptSink | null;
   options: PatchOptions | null;
@@ -276,7 +279,7 @@ function evaluate(binary: string, argv: string[], justification: string | undefi
 function patchedExecSync(command: string | Buffer, options?: Record<string, unknown>): Buffer | string {
   // Re-entrancy guard: exec internally calls execFile; avoid double interception
   if (_state.inIntercept) {
-    return (_state.originals["execSync"] as Function)(command, options);
+    return (_state.originals["execSync"] as AnyFn)(command, options);
   }
   _state.inIntercept = true;
   try {
@@ -320,7 +323,7 @@ function patchedExecSync(command: string | Buffer, options?: Record<string, unkn
     }
 
     try {
-      const result = (_state.originals["execSync"] as Function)(command, cleanOpts);
+      const result = (_state.originals["execSync"] as AnyFn)(command, cleanOpts);
       const stdout = typeof result === "string" ? result : result.toString("utf-8");
       const actionHash = computeActionHash(0, stdout, "");
       emitReceipt({ binary, argv, ...ev, decision: effectiveDecision(ev.decision), actionHash, exitCode: 0, halted: false });
@@ -345,7 +348,7 @@ function patchedSpawnSync(
   options?: Record<string, unknown>,
 ): SpawnSyncReturns<Buffer | string> {
   if (_state.inIntercept) {
-    return (_state.originals["spawnSync"] as Function)(command, args, options);
+    return (_state.originals["spawnSync"] as AnyFn)(command, args, options);
   }
   _state.inIntercept = true;
   try {
@@ -376,7 +379,7 @@ function patchedSpawnSync(
       throw makeEnoentError(binary);
     }
 
-    const result = (_state.originals["spawnSync"] as Function)(command, actualArgs, cleanOpts);
+    const result = (_state.originals["spawnSync"] as AnyFn)(command, actualArgs, cleanOpts);
     const stdout = result.stdout ? String(result.stdout) : "";
     const stderr = result.stderr ? String(result.stderr) : "";
     const exitCode = result.status ?? 0;
@@ -390,22 +393,22 @@ function patchedSpawnSync(
 
 function patchedExec(
   command: string,
-  optionsOrCallback?: Record<string, unknown> | Function,
-  maybeCallback?: Function,
+  optionsOrCallback?: Record<string, unknown> | AnyFn,
+  maybeCallback?: AnyFn,
 ): ChildProcess {
   if (_state.inIntercept) {
-    return (_state.originals["exec"] as Function)(command, optionsOrCallback, maybeCallback);
+    return (_state.originals["exec"] as AnyFn)(command, optionsOrCallback, maybeCallback);
   }
   _state.inIntercept = true;
   try {
     let opts: Record<string, unknown>;
-    let callback: Function | undefined;
+    let callback: AnyFn | undefined;
     if (typeof optionsOrCallback === "function") {
       callback = optionsOrCallback;
       opts = {};
     } else {
       opts = (optionsOrCallback as Record<string, unknown>) ?? {};
-      callback = maybeCallback as Function | undefined;
+      callback = maybeCallback as AnyFn | undefined;
     }
 
     const { binary, argv, hasShellOperators } = parseBinary(command);
@@ -435,7 +438,7 @@ function patchedExec(
         if (callback) {
           process.nextTick(() => callback!(makeEnoentError(blockedBin), "", ""));
         }
-        return (_state.originals["spawn"] as Function)("true", [], { stdio: "ignore" });
+        return (_state.originals["spawn"] as AnyFn)("true", [], { stdio: "ignore" });
       }
     }
 
@@ -450,7 +453,7 @@ function patchedExec(
         process.nextTick(() => callback!(makeEnoentError(binary), "", ""));
       }
       // Return a ChildProcess from a harmless no-op command
-      return (_state.originals["spawn"] as Function)("true", [], { stdio: "ignore" });
+      return (_state.originals["spawn"] as AnyFn)("true", [], { stdio: "ignore" });
     }
 
     const wrappedCallback = callback
@@ -465,10 +468,10 @@ function patchedExec(
       : undefined;
 
     if (wrappedCallback) {
-      return (_state.originals["exec"] as Function)(command, cleanOpts, wrappedCallback);
+      return (_state.originals["exec"] as AnyFn)(command, cleanOpts, wrappedCallback);
     }
 
-    const child = (_state.originals["exec"] as Function)(command, cleanOpts) as ChildProcess;
+    const child = (_state.originals["exec"] as AnyFn)(command, cleanOpts) as ChildProcess;
     let stdoutBuf = "";
     let stderrBuf = "";
     child.stdout?.on("data", (chunk: Buffer | string) => { stdoutBuf += String(chunk); });
@@ -489,7 +492,7 @@ function patchedExecFileSync(
   options?: Record<string, unknown>,
 ): Buffer | string {
   if (_state.inIntercept) {
-    return (_state.originals["execFileSync"] as Function)(file, args, options);
+    return (_state.originals["execFileSync"] as AnyFn)(file, args, options);
   }
   _state.inIntercept = true;
   try {
@@ -521,7 +524,7 @@ function patchedExecFileSync(
     }
 
     try {
-      const result = (_state.originals["execFileSync"] as Function)(file, actualArgs, cleanOpts);
+      const result = (_state.originals["execFileSync"] as AnyFn)(file, actualArgs, cleanOpts);
       const stdout = typeof result === "string" ? result : result.toString("utf-8");
       const actionHash = computeActionHash(0, stdout, "");
       emitReceipt({ binary, argv: actualArgs, ...ev, decision: effectiveDecision(ev.decision), actionHash, exitCode: 0, halted: false });
@@ -542,18 +545,18 @@ function patchedExecFileSync(
 
 function patchedExecFile(
   file: string,
-  argsOrOptsOrCb?: readonly string[] | Record<string, unknown> | Function,
-  optsOrCb?: Record<string, unknown> | Function,
-  maybeCb?: Function,
+  argsOrOptsOrCb?: readonly string[] | Record<string, unknown> | AnyFn,
+  optsOrCb?: Record<string, unknown> | AnyFn,
+  maybeCb?: AnyFn,
 ): ChildProcess {
   if (_state.inIntercept) {
-    return (_state.originals["execFile"] as Function)(file, argsOrOptsOrCb, optsOrCb, maybeCb);
+    return (_state.originals["execFile"] as AnyFn)(file, argsOrOptsOrCb, optsOrCb, maybeCb);
   }
   _state.inIntercept = true;
   try {
     let actualArgs: string[];
     let opts: Record<string, unknown>;
-    let callback: Function | undefined;
+    let callback: AnyFn | undefined;
 
     if (typeof argsOrOptsOrCb === "function") {
       actualArgs = []; opts = {}; callback = argsOrOptsOrCb;
@@ -584,7 +587,7 @@ function patchedExecFile(
       if (callback) {
         process.nextTick(() => callback!(makeEnoentError(binary), "", ""));
       }
-      return (_state.originals["spawn"] as Function)("true", [], { stdio: "ignore" });
+      return (_state.originals["spawn"] as AnyFn)("true", [], { stdio: "ignore" });
     }
 
     const wrappedCallback = callback
@@ -599,10 +602,10 @@ function patchedExecFile(
       : undefined;
 
     if (wrappedCallback) {
-      return (_state.originals["execFile"] as Function)(file, actualArgs, cleanOpts, wrappedCallback);
+      return (_state.originals["execFile"] as AnyFn)(file, actualArgs, cleanOpts, wrappedCallback);
     }
 
-    const child = (_state.originals["execFile"] as Function)(file, actualArgs, cleanOpts) as ChildProcess;
+    const child = (_state.originals["execFile"] as AnyFn)(file, actualArgs, cleanOpts) as ChildProcess;
     let stdoutBuf = "";
     let stderrBuf = "";
     child.stdout?.on("data", (chunk: Buffer | string) => { stdoutBuf += String(chunk); });
@@ -623,7 +626,7 @@ function patchedSpawn(
   options?: Record<string, unknown>,
 ): ChildProcess {
   if (_state.inIntercept) {
-    return (_state.originals["spawn"] as Function)(command, argsOrOpts, options);
+    return (_state.originals["spawn"] as AnyFn)(command, argsOrOpts, options);
   }
   _state.inIntercept = true;
   try {
@@ -654,7 +657,7 @@ function patchedSpawn(
       throw makeEnoentError(binary);
     }
 
-    const child = (_state.originals["spawn"] as Function)(command, actualArgs, cleanOpts) as ChildProcess;
+    const child = (_state.originals["spawn"] as AnyFn)(command, actualArgs, cleanOpts) as ChildProcess;
     let stdoutBuf = "";
     let stderrBuf = "";
     child.stdout?.on("data", (chunk: Buffer | string) => { stdoutBuf += String(chunk); });
@@ -675,7 +678,7 @@ function patchedFork(
   options?: Record<string, unknown>,
 ): ChildProcess {
   if (_state.inIntercept) {
-    return (_state.originals["fork"] as Function)(modulePath, argsOrOpts, options);
+    return (_state.originals["fork"] as AnyFn)(modulePath, argsOrOpts, options);
   }
   _state.inIntercept = true;
   try {
@@ -707,7 +710,7 @@ function patchedFork(
       throw makeEnoentError(binary);
     }
 
-    const child = (_state.originals["fork"] as Function)(modulePath, actualArgs, cleanOpts) as ChildProcess;
+    const child = (_state.originals["fork"] as AnyFn)(modulePath, actualArgs, cleanOpts) as ChildProcess;
     child.on("close", (code: number | null) => {
       const actionHash = computeActionHash(code ?? 0, "", "");
       emitReceipt({ binary, argv: forkArgs, ...ev, decision: effectiveDecision(ev.decision), actionHash, exitCode: code ?? 0, halted: false });

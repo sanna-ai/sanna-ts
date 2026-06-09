@@ -15,11 +15,11 @@
 import AdmZip from "adm-zip";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname, posix } from "node:path";
-import { tmpdir } from "node:os";
+import { createPublicKey } from "node:crypto";
 import yaml from "js-yaml";
 
-import { loadConstitution, verifyConstitutionSignature, parseConstitution } from "./constitution.js";
-import { loadPublicKey, getKeyId, exportPublicKeyPem } from "./crypto.js";
+import { verifyConstitutionSignature, parseConstitution } from "./constitution.js";
+import { loadPublicKey, getKeyId } from "./crypto.js";
 import { verifyReceipt } from "./verifier.js";
 import { computeFingerprints, TOOL_VERSION } from "./receipt.js";
 import type {
@@ -253,7 +253,7 @@ export function verifyBundle(
 
   // Step 3: Receipt fingerprint
   try {
-    const { receipt_fingerprint: computed16, full_fingerprint: computed64 } =
+    const { receipt_fingerprint: computed16 } =
       computeFingerprints(receipt);
     const expected16 = String(receipt.receipt_fingerprint ?? "");
     if (computed16 === expected16) {
@@ -271,7 +271,7 @@ export function verifyBundle(
   // Step 4: Constitution signature
   const constitutionEntry = zip.getEntry("constitution.yaml")!;
   const constitutionText = constitutionEntry.getData().toString("utf-8");
-  let constitution: ReturnType<typeof loadConstitutionFromText> | null = null;
+  let constitution: Constitution | null = null;
 
   try {
     const constData = yaml.load(constitutionText) as Record<string, unknown>;
@@ -288,7 +288,6 @@ export function verifyBundle(
       const constPubKeyData = resolveKey(constKeyId) ?? receiptPubKeyData;
       if (constPubKeyData) {
         try {
-          const { createPublicKey } = require("node:crypto");
           const pubKey = createPublicKey({
             key: constPubKeyData.toString("utf-8"),
             format: "pem",
@@ -337,7 +336,6 @@ export function verifyBundle(
   if (sigBlock.signature) {
     if (receiptPubKeyData) {
       try {
-        const { createPublicKey } = require("node:crypto");
         const pubKey = createPublicKey({
           key: receiptPubKeyData.toString("utf-8"),
           format: "pem",
@@ -433,11 +431,6 @@ export function verifyBundle(
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────
-
-function loadConstitutionFromText(_text: string): Constitution | null {
-  // Placeholder — actual implementation uses parseConstitution
-  return null;
-}
 
 function verifyProvenanceChain(
   receipt: Record<string, unknown>,

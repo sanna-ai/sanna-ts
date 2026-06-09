@@ -6,12 +6,12 @@
  */
 
 import {
-  writeFileSync,
   readFileSync,
   renameSync,
   unlinkSync,
   mkdirSync,
   mkdtempSync,
+  chmodSync,
   lstatSync,
   existsSync,
   openSync,
@@ -103,7 +103,6 @@ export function secureTempDir(prefix: string = "sanna-"): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   try {
     // Tighten permissions — mkdtempSync may use system default
-    const { chmodSync } = require("node:fs") as typeof import("node:fs");
     chmodSync(dir, 0o700);
   } catch {
     // Some platforms may not support chmod
