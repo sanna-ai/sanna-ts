@@ -11,8 +11,6 @@ import { homedir } from "node:os";
 import yaml from "js-yaml";
 import { safeWriteFile } from "@sanna-ai/core";
 
-import type { GatewayConfig, DownstreamConfig } from "./config.js";
-
 // ── Types ────────────────────────────────────────────────────────────
 
 interface McpServerEntry {

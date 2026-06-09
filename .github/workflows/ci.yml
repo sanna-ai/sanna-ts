@@ -36,6 +36,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Lint (SAN-519)
+        run: npm run lint
+
       - name: Test
         env:
           # Bypass the ReceiptStore temp-dir guard (store.ts:99) for CI test runs.

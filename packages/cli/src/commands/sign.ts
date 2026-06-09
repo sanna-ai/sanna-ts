@@ -4,7 +4,6 @@ import {
   signConstitution,
   saveConstitution,
   loadPrivateKey,
-  getKeyId,
 } from "@sanna-ai/core";
 
 export async function runSign(

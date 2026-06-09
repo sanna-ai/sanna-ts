@@ -23,6 +23,20 @@ core, cli, gateway, mcp-server) implementing the Sanna governance protocol.
 - [CHANGELOG.md](CHANGELOG.md) — version history
 - `sanna-protocol/docs/decisions/` — ADR records for cross-SDK architectural decisions (bootstrapped in a follow-up PR per SAN-326 sequencing)
 
+## Lint (SAN-519)
+
+Config: `eslint.config.mjs` -- `@typescript-eslint` recommended ruleset applied to
+`packages/*/src/**/*.ts` only (tests and dist are excluded).
+
+Run: `npm run lint`
+
+CI gate: the Lint step runs after Build and before Test in `.github/workflows/ci.yml`;
+a nonzero exit blocks the PR.
+
+Suppression policy: inline `// eslint-disable-next-line <rule> -- <rationale> (SAN-519)`
+only -- single-line scope, no file-wide or config-wide disables. Do NOT weaken
+`eslint.config.mjs` (adding `rules:{}` overrides defeats the control).
+
 ## Per-developer notes
 
 For personal scratch (machine-specific paths, WIP rule overrides), use

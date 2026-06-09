@@ -48,7 +48,6 @@ import {
   CircuitBreakerOpenError,
 } from "./circuit-breaker.js";
 import {
-  namespaceTool,
   parseNamespacedTool,
   namespaceToolList,
 } from "./tool-namespace.js";

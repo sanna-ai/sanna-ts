@@ -1,3 +1,11 @@
+## [Unreleased] -- 2026-06-09 (SAN-519)
+
+### Changed
+- Cleared all pre-existing lint errors across packages/*/src (tseslint recommended); 2 targeted inline suppressions with rationale (heuristic-judge.ts interface-required params); zero behavior changes (full suite unchanged: 73 files, 1545 tests).
+- CI now gates `npm run lint` (new step after Build) so lint errors cannot accumulate silently.
+
+---
+
 ## [Unreleased] -- 2026-06-09 (SAN-796 gold polish)
 
 ### Fixed

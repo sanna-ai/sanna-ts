@@ -584,7 +584,7 @@ function handleVerifyReceipt(
   const verification = verifyReceipt(receipt, publicKey);
 
   // Also recompute fingerprints for reporting
-  const { receipt_fingerprint, full_fingerprint } = computeFingerprints(receipt);
+  const { receipt_fingerprint } = computeFingerprints(receipt);
 
   return jsonResult({
     valid: verification.valid,

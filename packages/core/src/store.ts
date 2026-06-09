@@ -6,9 +6,9 @@
  */
 
 import Database from "better-sqlite3";
-import { mkdirSync, existsSync, statSync, chmodSync, openSync, fstatSync, closeSync } from "node:fs";
+import { mkdirSync, existsSync, chmodSync, openSync, fstatSync, closeSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { homedir, tmpdir, platform } from "node:os";
+import { homedir, platform } from "node:os";
 import type { ReceiptQueryFilters } from "./types.js";
 
 const SCHEMA_VERSION = 1;

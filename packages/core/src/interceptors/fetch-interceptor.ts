@@ -21,6 +21,8 @@ import type { RedactionConfig } from "../redaction.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
+type AnyFn = (...args: unknown[]) => unknown;
+
 export interface HttpPatchOptions {
   constitutionPath: string;
   sink: ReceiptSink;
@@ -36,7 +38,7 @@ export interface HttpPatchOptions {
 
 interface HttpInterceptorState {
   active: boolean;
-  originals: Record<string, Function>;
+  originals: Record<string, AnyFn>;
   constitution: Constitution | null;
   sink: ReceiptSink | null;
   options: HttpPatchOptions | null;
@@ -291,7 +293,7 @@ async function computeBodyHash(body: RequestInit["body"] | null | undefined): Pr
   return bytes.length > 0 ? hashBytes(bytes) : EMPTY_HASH;
 }
 
-function determineEventType(decision: string, mode: string): string {
+function determineEventType(decision: string): string {
   if (decision === "halt") return "api_invocation_halted";
   if (decision === "escalate") return "api_invocation_escalated";
   return "api_invocation_allowed";
@@ -399,9 +401,8 @@ async function patchedFetch(input: string | URL | Request, init?: RequestInit): 
       reason = `Invariant ${invariant.id}: ${invariant.description}`;
     }
 
-    const mode = _state.options!.mode ?? "enforce";
     const contextLimitation = justification ? "api_execution" : "api_no_justification";
-    const eventType = determineEventType(decision, mode);
+    const eventType = determineEventType(decision);
 
     if (!shouldExecute(decision)) {
       if (!_checkAndEmitHttpAnomaly(url)) {
@@ -498,15 +499,15 @@ function extractHttpHeaderKeys(args: unknown[]): string[] {
   return [];
 }
 
-function createPatchedHttpRequest(protocol: string, originalKey: string): Function {
+function createPatchedHttpRequest(protocol: string, originalKey: string): AnyFn {
   return function patchedRequest(this: unknown, ...args: unknown[]) {
     if (_state.inIntercept) {
-      return (_state.originals[originalKey] as Function).apply(this, args);
+      return (_state.originals[originalKey] as AnyFn).apply(this, args);
     }
 
     const url = buildUrlFromHttpArgs(args, protocol);
     if (isExcluded(url)) {
-      return (_state.originals[originalKey] as Function).apply(this, args);
+      return (_state.originals[originalKey] as AnyFn).apply(this, args);
     }
 
     // SSRF validation — synchronous check for IP literals
@@ -527,7 +528,6 @@ function createPatchedHttpRequest(protocol: string, originalKey: string): Functi
     }
 
     _state.inIntercept = true;
-    const self = this;
     try {
       const method = buildMethodFromHttpArgs(args);
       const headersKeys = extractHttpHeaderKeys(args);
@@ -544,8 +544,7 @@ function createPatchedHttpRequest(protocol: string, originalKey: string): Functi
         reason = `Invariant ${invariant.id}: ${invariant.description}`;
       }
 
-      const mode = _state.options!.mode ?? "enforce";
-      const eventType = determineEventType(decision, mode);
+      const eventType = determineEventType(decision);
 
       if (!shouldExecute(decision)) {
         if (!_checkAndEmitHttpAnomaly(url)) {
@@ -566,10 +565,10 @@ function createPatchedHttpRequest(protocol: string, originalKey: string): Functi
         throw err;
       }
 
-      const req = (_state.originals[originalKey] as Function).apply(self, args);
+      const req = (_state.originals[originalKey] as AnyFn).apply(this, args);
 
       const origOn = req.on.bind(req);
-      req.on = function (this: unknown, event: string, listener: Function) {
+      req.on = function (this: unknown, event: string, listener: AnyFn) {
         if (event === "response") {
           const wrappedListener = (res: { statusCode?: number; headers?: Record<string, string> }) => {
             const statusCode = res.statusCode ?? 0;

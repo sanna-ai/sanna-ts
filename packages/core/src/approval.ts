@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import type { KeyObject } from "node:crypto";
 
-import { canonicalize, hashObj } from "./hashing.js";
+import { canonicalize } from "./hashing.js";
 import { sign, verify, getKeyId } from "./crypto.js";
 import { readFileSync } from "node:fs";
 import { safeWriteJson } from "./safe-io.js";
