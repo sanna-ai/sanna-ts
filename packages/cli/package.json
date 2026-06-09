@@ -26,8 +26,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sanna-ai/core": "*",
-    "@sanna-ai/gateway": "*",
+    "@sanna-ai/core": "^1.5.0",
+    "@sanna-ai/gateway": "^1.5.0",
     "commander": "^14.0.3",
     "js-yaml": "^4.1.0",
     "prompts": "^2.4.2"
