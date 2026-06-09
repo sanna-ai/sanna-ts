@@ -4,7 +4,7 @@ Sanna generates portable cryptographic receipts attesting to governance outcomes
 
 This is the **TypeScript implementation** of [Sanna Protocol v1.5](https://github.com/sanna-ai/sanna-protocol). For the Python reference implementation, see [sanna-ai/sanna](https://github.com/sanna-ai/sanna).
 
-## v1.4.0 Release Notes
+## v1.5.0 Release Notes
 
 **Receipt Schema v1.5** — 21-field fingerprint (up from 20), adding `agent_identity` at fingerprint position 21.
 
@@ -14,8 +14,8 @@ This is the **TypeScript implementation** of [Sanna Protocol v1.5](https://githu
 - `agent_identity` — optional object for agent session identity; must include `agent_session_id` when present. Triggers spec_version "1.5" / checks_version "10" emission. Participates in fingerprint at position 21 via `hashObj`. Absent in cv=9 legacy receipts.
 
 **Version changes:**
-- `SPEC_VERSION` → `"1.5"`, `CHECKS_VERSION` → `"10"`, `TOOL_VERSION` → `"1.4.0"` (bare semver; SDK identity moves to `tool_name` field).
-- All 4 npm packages bumped to `1.4.0`.
+- `SPEC_VERSION` → `"1.5"`, `CHECKS_VERSION` → `"10"`, `TOOL_VERSION` → `"1.5.0"` (bare semver; SDK identity moves to `tool_name` field).
+- All 4 npm packages bumped to `1.5.0`.
 
 ## v1.3.0 Release Notes
 
@@ -42,6 +42,7 @@ This is the **TypeScript implementation** of [Sanna Protocol v1.5](https://githu
 
 ```bash
 npm install @sanna-ai/core
+npm install -g @sanna-ai/cli
 ```
 
 Set up governance (one-time):
@@ -98,6 +99,7 @@ No code changes to your agent. The gateway sits between your MCP client and down
 
 ```bash
 npm install @sanna-ai/gateway
+npm install -g @sanna-ai/cli
 
 sanna init         # Creates constitution.yaml + gateway.yaml
 sanna keygen --label gateway
@@ -178,7 +180,7 @@ Every governed action produces a reasoning receipt — a JSON artifact that cryp
 | Field | Type | Description |
 |-------|------|-------------|
 | `spec_version` | string | Schema version, `"1.5"` |
-| `tool_version` | string | Package version, e.g. `"1.4.0"` |
+| `tool_version` | string | Package version, e.g. `"1.5.0"` |
 | `checks_version` | string | Check algorithm version, e.g. `"10"` |
 | `tool_name` | string | Canonical SDK identity, `"sanna-ts"` (v1.4+, required at cv>=9) |
 | `receipt_id` | string | UUID v4 unique identifier |
@@ -252,7 +254,7 @@ Minimal example receipt (abbreviated — production receipts typically contain 3
 ```json
 {
   "spec_version": "1.5",
-  "tool_version": "1.4.0",
+  "tool_version": "1.5.0",
   "checks_version": "10",
   "tool_name": "sanna-ts",
   "receipt_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
