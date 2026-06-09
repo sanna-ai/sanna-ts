@@ -1,4 +1,8 @@
+import { createRequire } from "node:module";
 import { Command } from "commander";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 import { initCommand } from "./commands/init.js";
 import { keygenCommand } from "./commands/keygen.js";
 import { signCommand } from "./commands/sign.js";
@@ -22,7 +26,7 @@ const program = new Command();
 program
   .name("sanna")
   .description("Trust infrastructure for AI agents")
-  .version("1.0.0");
+  .version(version);
 
 program.addCommand(initCommand);
 program.addCommand(keygenCommand);

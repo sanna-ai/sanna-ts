@@ -1,3 +1,18 @@
+## [Unreleased] -- 2026-06-09 (SAN-796 gold polish)
+
+### Fixed
+- CLI --version now reports the real package version (was hard-coded 1.0.0); derived from package.json at runtime.
+- Internal @sanna-ai/* dependencies pinned to ^1.5.0 (were "*", which npm publishes literally -- could pair new packages with the old core 1.1.1).
+- cli/gateway/mcp-server now ship LICENSE (AGPL-3.0) and README.md (files arrays referenced them but they did not exist).
+- gateway dist bin had a stacked shebang (source shebang + tsup banner both emitted); removed source shebang so tsup banner is the sole injector.
+- @sanna-ai/core npm README: protocol version v1.3 -> v1.5; SPEC_VERSION "1.3" -> "1.5"; CHECKS_VERSION "8" -> "10"; TOOL_VERSION "sanna-ts/1.3.0" -> "1.5.0"; computeFingerprintInput description updated to cover 21-field (cv>=10) and 20-field (cv>=9) paths.
+- Root README CLI command count 16 -> 17.
+
+### Added
+- Version-parity test: TOOL_VERSION must equal @sanna-ai/core package.json version.
+
+---
+
 ## [Unreleased] -- 2026-06-09 (SAN-796 / SAN-797 / SAN-798)
 
 ### Security

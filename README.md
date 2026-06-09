@@ -456,7 +456,7 @@ All commands are available as `sanna <command>`:
 | Package | Description |
 |---------|-------------|
 | [`@sanna-ai/core`](packages/core/) | Constitution engine, Ed25519 crypto, receipts, coherence checks, middleware, receipt store, receipt sinks, drift analysis, evidence bundles, approval workflows, identity claims |
-| [`@sanna-ai/cli`](packages/cli/) | Command-line tools (16 commands) |
+| [`@sanna-ai/cli`](packages/cli/) | Command-line tools (17 commands) |
 | [`@sanna-ai/mcp-server`](packages/mcp-server/) | 10 governance tools over MCP stdio transport |
 | [`@sanna-ai/gateway`](packages/gateway/) | MCP enforcement proxy with circuit breakers, escalation, receipt chaining, content mode attestation, PII redaction, config migration |
 
