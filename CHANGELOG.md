@@ -1,5 +1,8 @@
 # Changelog
 
+All notable changes to the sanna-ts SDK are documented here.
+Format: Keep a Changelog. Versioning: Semantic Versioning.
+
 ## [1.5.0] - 2026-06-09
 
 ### 2026-06-09 (SAN-519)
@@ -1132,9 +1135,6 @@ produce identical output -> cross-SDK byte-equal contract proven.
 - SAN-375 (this entry)
 - Companion: SAN-374 (sanna-repo schema sync, already merged), SAN-205 (constitution authority enum + escalation_visibility), SAN-203/209/370/371 (TS feature work that depends on this sync).
 
-
-All notable changes to the sanna-ts SDK are documented here.
-Format: Keep a Changelog. Versioning: Semantic Versioning.
 
 ## [1.4.0] - 2026-04-21
 
