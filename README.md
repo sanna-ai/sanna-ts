@@ -1,6 +1,6 @@
 # Sanna — Trust Infrastructure for AI Agents
 
-Sanna generates portable cryptographic receipts attesting to governance outcomes. The `sannaObserve` wrapper is post-execution detection and attestation -- the wrapped function executes before output checks run, so its side effects are not prevented; the gateway and interceptor surfaces enforce governance pre-execution and blocks disallowed actions before they occur. Constitution-as-code: your governance rules live in version-controlled YAML, not in a vendor dashboard.
+Sanna generates portable cryptographic receipts attesting to governance outcomes. The `sannaObserve` wrapper is post-execution detection and attestation -- the wrapped function executes before output checks run, so its side effects are not prevented; the gateway and interceptor surfaces enforce governance pre-execution and block disallowed actions before they occur. Constitution-as-code: your governance rules live in version-controlled YAML, not in a vendor dashboard.
 
 This is the **TypeScript implementation** of [Sanna Protocol v1.5](https://github.com/sanna-ai/sanna-protocol). For the Python reference implementation, see [sanna-ai/sanna](https://github.com/sanna-ai/sanna).
 
@@ -450,6 +450,11 @@ All commands are available as `sanna <command>`:
 | `sanna check-config` | Validate gateway config (dry-run) |
 | `sanna gateway` | Start MCP enforcement proxy |
 | `sanna migrate` | Migrate Claude Desktop / Cursor config to gateway format |
+| `sanna approve` | Sign a constitution approval request with an Ed25519 key (`--private-key` required) |
+| `sanna bundle-create` | Create a self-contained evidence bundle zip from receipt, constitution, and public key |
+| `sanna bundle-verify` | Verify a self-contained evidence bundle (8-step; `--trusted-key-ids` for trust anchor) |
+| `sanna generate` | Generate a receipt from a trace data JSON file (`--signing-key` optional) |
+| `sanna verify-aarm` | Verify AARM Core (R1-R6) conformance across a set of receipts (`--format`, `--public-key`) |
 
 ## Packages
 

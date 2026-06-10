@@ -11,6 +11,7 @@ Format: Keep a Changelog. Versioning: Semantic Versioning.
 
 ### Fixed
 - README hero: "the gateway surface enforces governance pre-execution" corrected to "the gateway and interceptor surfaces enforce governance pre-execution" (packages/core/src/index.ts lines 201-207 ship patchChildProcess + patchFetch).
+- README hero verb agreement; CLI Reference table completed (12 -> 17 commands: approve, bundle-create, bundle-verify, generate, verify-aarm).
 
 ---
 
