@@ -3,6 +3,17 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-06-10 (SAN-803)
+
+### Added
+- `docs/ts-sdk-reference.md` -- TypeScript SDK reference (structural twin of the Python pair, TS-derived behavior including the interceptor behavior matrix with exact thrown types per surface and a confirmed no-reasoning-gate statement for sannaObserve).
+- `docs/cookbook.md` -- TypeScript SDK cookbook (delta recipes: subprocess and fetch interceptors, custom invariant evaluator, drift report, evidence bundle, CloudHTTPSink delivery to Sanna Cloud).
+
+### Fixed
+- README hero: "the gateway surface enforces governance pre-execution" corrected to "the gateway and interceptor surfaces enforce governance pre-execution" (packages/core/src/index.ts lines 201-207 ship patchChildProcess + patchFetch).
+
+---
+
 ## [1.5.0] - 2026-06-09
 
 ### 2026-06-09 (SAN-519)
