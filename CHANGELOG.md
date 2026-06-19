@@ -3,6 +3,13 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-06-18 (SAN-818)
+
+### Security
+- `@sanna-ai/core` hashing: `__proto__` (and any prototype-setter) keys are now included in canonical hashing and signing instead of being silently dropped — fixes a signature/fingerprint bypass and restores cross-SDK parity with the Python SDK (SAN-818). Objects with a `__proto__` own data property (e.g. from `JSON.parse`) are now faithfully canonicalized; fingerprints of objects without `__proto__` are byte-identical to the previous behavior.
+
+---
+
 ## [Unreleased] -- 2026-06-10 (SAN-803)
 
 ### Added

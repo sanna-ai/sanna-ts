@@ -66,11 +66,11 @@ export function normalizeFloats(obj: unknown): unknown {
     return obj.map((v) => normalizeFloats(v));
   }
   if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      result[k] = normalizeFloats(v);
-    }
-    return result;
+    // Object.fromEntries makes __proto__ an own data property instead of
+    // hitting the prototype setter (bracket assignment silently drops it).
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [k, normalizeFloats(v)]),
+    );
   }
   return obj;  // null, string, undefined pass through
 }

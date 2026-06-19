@@ -155,6 +155,32 @@ describe("SAN-538: -0 + BigInt normalization regression guards", () => {
   });
 });
 
+describe("SAN-818: __proto__ key preservation in canonical hashing", () => {
+  it("canonicalize preserves __proto__ as an own data property", () => {
+    const x = JSON.parse('{"__proto__":1,"b":2}');
+    expect(canonicalize(x)).toBe('{"__proto__":1,"b":2}');
+  });
+
+  it("hashObj with __proto__ key matches Python SDK parity hash", () => {
+    const x = JSON.parse('{"__proto__":1,"b":2}');
+    expect(hashObj(x)).toBe(
+      "95ec0a6604db7f7082ab8f65e206d4bd816ee5e6f2f589a018a06ef3da2d5112",
+    );
+  });
+
+  it("hashObj with nested __proto__ object matches Python SDK parity hash", () => {
+    expect(hashObj(JSON.parse('{"__proto__":{"x":1}}'))).toBe(
+      "0fb20b06cf5847cf21cc37dd0d3602c176cc3f96ea4281167bbfe61cbe5813a3",
+    );
+  });
+
+  it("regression: __proto__ key is genuinely in the hash (not dropped)", () => {
+    expect(hashObj(JSON.parse('{"__proto__":1,"b":2}'))).not.toBe(
+      hashObj({ b: 2 }),
+    );
+  });
+});
+
 describe("constitution content_hash (golden)", () => {
   it("minimal.yaml content_hash is deterministic", () => {
     const content = readFileSync(

@@ -647,3 +647,24 @@ describe("v1.4 verifier (SAN-222)", () => {
     );
   });
 });
+
+// ── SAN-818: __proto__ tamper-detection ─────────────────────────────
+
+describe("SAN-818: __proto__ tamper-detection via inputs", () => {
+  it("detects __proto__ data key injected into inputs after signing", () => {
+    const receipt = makeSignedReceipt();
+    // Inject __proto__ as an own enumerable data property (not prototype mutation).
+    // Object.defineProperty bypasses the [[Prototype]] setter so the key is truly
+    // owned. The verifier recomputes hashObj(inputs); after SAN-818 the key is
+    // included, causing a context_hash mismatch that catches the tamper.
+    Object.defineProperty(receipt.inputs as Record<string, unknown>, "__proto__", {
+      value: { injected: true },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    const result = verifyReceipt(receipt, pubKey);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("context_hash"))).toBe(true);
+  });
+});
