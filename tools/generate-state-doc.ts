@@ -249,12 +249,18 @@ function main(): void {
     const timestamp = isoTimestamp();
     const content = generateFull(root, timestamp);
     mkdirSync(join(root, 'docs'), { recursive: true });
-    writeFileSync(statePath, content, 'utf8');
     const totalTests = countAllTestFiles(root);
     const constants = readReceiptConstants(root);
-    process.stdout.write(
-      `Generated docs/state.md (tests=${totalTests}, spec_version=${constants.SPEC_VERSION}, tool_version=${constants.TOOL_VERSION})\n`
-    );
+    if (existsSync(statePath) && comparable(readFileSync(statePath, 'utf8')) === comparable(content)) {
+      process.stdout.write(
+        `docs/state.md is up to date (tests=${totalTests}, spec_version=${constants.SPEC_VERSION}, tool_version=${constants.TOOL_VERSION})\n`
+      );
+    } else {
+      writeFileSync(statePath, content, 'utf8');
+      process.stdout.write(
+        `Generated docs/state.md (tests=${totalTests}, spec_version=${constants.SPEC_VERSION}, tool_version=${constants.TOOL_VERSION})\n`
+      );
+    }
   }
 }
 
