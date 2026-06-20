@@ -11,3 +11,11 @@ repos:
         # file; any other tracked file containing PEM private-key markers is
         # still blocked.
         exclude: ^packages/core/tests/crypto\.test\.ts$
+  - repo: local
+    hooks:
+      - id: state-doc
+        name: Regenerate docs/state.md (fails if it was stale)
+        entry: npx tsx tools/generate-state-doc.ts
+        language: system
+        pass_filenames: false
+        always_run: true
