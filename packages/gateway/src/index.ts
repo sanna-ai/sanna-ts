@@ -36,7 +36,6 @@ export { injectJustificationParam, extractJustification } from "./schema-mutatio
 export {
   computeInputHash,
   computeReasoningHash,
-  computeActionHash,
   buildReceiptTriad,
 } from "./receipt-v2.js";
 export type { ReceiptTriad } from "./receipt-v2.js";

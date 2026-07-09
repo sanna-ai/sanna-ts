@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   computeInputHash,
   computeReasoningHash,
-  computeActionHash,
   buildReceiptTriad,
 } from "../src/receipt-v2.js";
 import type { AuthorityDecision, CheckResult } from "@sanna-ai/core";
@@ -66,38 +65,15 @@ describe("computeReasoningHash", () => {
   });
 });
 
-describe("computeActionHash", () => {
-  it("should produce a deterministic hash", () => {
-    const h1 = computeActionHash("result text", true, false);
-    const h2 = computeActionHash("result text", true, false);
-    expect(h1).toBe(h2);
-  });
-
-  it("should differ for allowed vs denied", () => {
-    const h1 = computeActionHash("result", true, false);
-    const h2 = computeActionHash("result", false, false);
-    expect(h1).not.toBe(h2);
-  });
-
-  it("should differ for escalated vs not", () => {
-    const h1 = computeActionHash("result", true, false);
-    const h2 = computeActionHash("result", true, true);
-    expect(h1).not.toBe(h2);
-  });
-
-  it("should handle null result", () => {
-    const h1 = computeActionHash(null, false, false);
-    const h2 = computeActionHash(null, false, false);
-    expect(h1).toBe(h2);
-  });
-});
-
 describe("buildReceiptTriad", () => {
-  it("should combine three hashes", () => {
-    const triad = buildReceiptTriad("aaa", "bbb", "ccc");
+  it("should combine two hashes and derive action_hash + context_limitation", () => {
+    // SAN-848: action_hash is always derived (== input_hash) at the gateway
+    // boundary; there is no independent action_hash input anymore.
+    const triad = buildReceiptTriad("aaa", "bbb");
     expect(triad.input_hash).toBe("aaa");
     expect(triad.reasoning_hash).toBe("bbb");
-    expect(triad.action_hash).toBe("ccc");
+    expect(triad.action_hash).toBe("aaa");
+    expect(triad.context_limitation).toBe("gateway_boundary");
   });
 
   it("should produce a full triad from computed hashes", () => {
@@ -106,12 +82,13 @@ describe("buildReceiptTriad", () => {
       { decision: "allow", reason: "ok", boundary_type: "can_execute" },
       [],
     );
-    const actionHash = computeActionHash("result", true, false);
-    const triad = buildReceiptTriad(inputHash, reasoningHash, actionHash);
+    const triad = buildReceiptTriad(inputHash, reasoningHash);
 
     expect(triad.input_hash).toBeTruthy();
     expect(triad.reasoning_hash).toBeTruthy();
     expect(triad.action_hash).toBeTruthy();
+    expect(triad.action_hash).toBe(triad.input_hash);
+    expect(triad.context_limitation).toBe("gateway_boundary");
     // All should be valid hex hashes
     expect(triad.input_hash).toMatch(/^[a-f0-9]+$/);
   });

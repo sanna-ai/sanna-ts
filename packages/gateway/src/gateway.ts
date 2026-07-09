@@ -58,9 +58,9 @@ import { deliverTokenToFile } from "./file-delivery.js";
 import {
   computeInputHash,
   computeReasoningHash,
-  computeActionHash,
   buildReceiptTriad,
 } from "./receipt-v2.js";
+import type { ReceiptTriad } from "./receipt-v2.js";
 
 // ── Meta-tool names ──────────────────────────────────────────────────
 
@@ -622,8 +622,7 @@ export class SannaGateway {
     switch (effectiveDecision.decision) {
       case "halt": {
         // DENY — do not forward
-        const actionHash = computeActionHash(null, false, wasEscalated);
-        const triad = buildReceiptTriad(inputHash, reasoningHash, actionHash);
+        const triad = buildReceiptTriad(inputHash, reasoningHash);
         const receipt = this._buildReceipt(
           parsed.tool,
           processedArgs,
@@ -669,8 +668,7 @@ export class SannaGateway {
               this._constitution.identity?.agent_name ?? "unknown",
             );
 
-            const actionHash = computeActionHash(null, false, false);
-            const triad = buildReceiptTriad(inputHash, reasoningHash, actionHash);
+            const triad = buildReceiptTriad(inputHash, reasoningHash);
             const receipt = this._buildReceipt(
               parsed.tool,
               processedArgs,
@@ -799,12 +797,7 @@ export class SannaGateway {
     const processedResult = toolResult;
 
     // i. Generate receipt with triad
-    const actionHash = computeActionHash(
-      processedResult?.content,
-      wasAllowed,
-      wasEscalated,
-    );
-    const triad = buildReceiptTriad(inputHash, reasoningHash, actionHash);
+    const triad = buildReceiptTriad(inputHash, reasoningHash);
     const receipt = this._buildReceipt(
       parsed.tool,
       processedArgs,
@@ -820,13 +813,23 @@ export class SannaGateway {
 
     // m. Return result with receipt metadata
     const resultContent = processedResult?.content ?? [];
+    // Read the triad back from the emitted receipt's extensions (its new
+    // fingerprint-covered location, SAN-848) rather than the local `triad`
+    // variable, so the summary always reflects what the receipt itself
+    // asserts.
+    const emittedExtensions = (receipt as Record<string, unknown>).extensions as
+      | Record<string, unknown>
+      | undefined;
+    const emittedGatewayExt = emittedExtensions?.["com.sanna.gateway"] as
+      | Record<string, unknown>
+      | undefined;
     resultContent.push({
       type: "text",
       text: JSON.stringify({
         _sanna_receipt: {
           receipt_id: receipt.receipt_id,
           status: receipt.status,
-          receipt_triad: triad,
+          receipt_triad: emittedGatewayExt?.receipt_triad ?? triad,
           enforcement_surface: (receipt as Record<string, unknown>).enforcement_surface,
           invariants_scope: (receipt as Record<string, unknown>).invariants_scope,
         },
@@ -849,7 +852,7 @@ export class SannaGateway {
     result: ToolCallResult | null,
     wasAllowed: boolean,
     wasEscalated: boolean,
-    triad: { input_hash: string; reasoning_hash: string; action_hash: string },
+    triad: ReceiptTriad,
     parentReceipts?: string[] | null,
   ): Record<string, unknown> {
     const correlationId = `gw-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -860,6 +863,21 @@ export class SannaGateway {
       allow: "allowed",
     };
     const normalizedAction = ENFORCEMENT_ACTION_MAP[decision.decision] ?? decision.decision;
+
+    // v2.0 Receipt Triad (SAN-848): embedded under extensions so it is
+    // covered by the fingerprint that generateReceipt computes below --
+    // NOT bolted on top-level after the fact (that produced schema-invalid,
+    // fingerprint-uncovered receipts). Mirrors Python's
+    // sanna.gateway.server._generate_receipt extensions["com.sanna.gateway"]
+    // placement. _buildReceipt does not currently carry any other
+    // extensions, but this spreads {"com.sanna.gateway": {...}} rather than
+    // assigning it outright so a future addition to that namespace merges
+    // instead of clobbering.
+    const extensions: Record<string, unknown> = {
+      "com.sanna.gateway": {
+        receipt_triad: triad,
+      },
+    };
 
     const receipt = generateReceipt({
       correlation_id: correlationId,
@@ -884,11 +902,10 @@ export class SannaGateway {
       enforcementSurface: "gateway",
       invariantsScope: "full",
       agent_identity: { agent_session_id: this._agentSessionId },
+      extensions,
     });
 
-    // Add triad
     let mutableReceipt = receipt as Record<string, unknown>;
-    mutableReceipt.receipt_triad = triad;
 
     // Apply redaction markers BEFORE signing (SEC-1)
     if (this._redactionConfig?.enabled) {

@@ -16,7 +16,7 @@ import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./type
 
 export const SPEC_VERSION = "1.5";
 export const CHECKS_VERSION = "10"; // SAN-370 v1.5: agent_identity_hash at field 21
-export const TOOL_VERSION = "1.5.0"; // SAN-370 v1.5 SHIPPED
+export const TOOL_VERSION = "1.5.1"; // SAN-848: gateway receipt-triad placement fix
 export const TOOL_NAME = "sanna-ts"; // v1.4: canonical SDK identity per spec §2.17
 
 // ── Fingerprint computation ──────────────────────────────────────────

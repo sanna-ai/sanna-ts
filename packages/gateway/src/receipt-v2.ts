@@ -1,13 +1,19 @@
 /**
  * Sanna Gateway — Receipt v2.0 Triad
  *
- * Enhanced receipt generation with three deterministic hashes:
+ * Enhanced receipt generation with three deterministic hashes, embedded at
+ * extensions["com.sanna.gateway"].receipt_triad (SAN-848):
  * - input_hash:     hash of the incoming request (tool + args)
  * - reasoning_hash: hash of governance reasoning (decision + checks)
- * - action_hash:    hash of the action taken (result + flags)
+ * - action_hash:    at the gateway boundary this equals input_hash — the
+ *                    gateway can only observe the tool call it proxied, not
+ *                    what the downstream server actually executed.
+ *                    context_limitation documents this constraint for
+ *                    downstream verifiers. Mirrors Python's
+ *                    sanna.gateway.receipt_v2.compute_receipt_triad.
  */
 
-import { hashObj, hashContent } from "@sanna-ai/core";
+import { hashObj } from "@sanna-ai/core";
 import type { AuthorityDecision, CheckResult } from "@sanna-ai/core";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -16,6 +22,7 @@ export interface ReceiptTriad {
   input_hash: string;
   reasoning_hash: string;
   action_hash: string;
+  context_limitation: string;
 }
 
 // ── Hash computation ─────────────────────────────────────────────────
@@ -53,36 +60,23 @@ export function computeReasoningHash(
 }
 
 /**
- * Hash of the action taken: the tool result, whether it was allowed,
- * and whether escalation was involved.
- */
-export function computeActionHash(
-  toolResult: unknown,
-  wasAllowed: boolean,
-  wasEscalated: boolean,
-): string {
-  // Normalize result to string for hashing
-  const resultStr =
-    typeof toolResult === "string"
-      ? toolResult
-      : JSON.stringify(toolResult ?? null);
-
-  return hashContent(
-    `allowed=${wasAllowed}:escalated=${wasEscalated}:result=${resultStr}`,
-  );
-}
-
-/**
  * Build the complete receipt triad from pre-computed hashes.
+ *
+ * At the gateway boundary, action_hash always equals input_hash: the
+ * gateway is a proxy and cannot attest to what the downstream server
+ * actually executed, only to the tool call it observed and forwarded.
+ * context_limitation is fixed to "gateway_boundary" to document this for
+ * downstream verifiers (SAN-848; mirrors Python's
+ * sanna.gateway.receipt_v2.compute_receipt_triad).
  */
 export function buildReceiptTriad(
   inputHash: string,
   reasoningHash: string,
-  actionHash: string,
 ): ReceiptTriad {
   return {
     input_hash: inputHash,
     reasoning_hash: reasoningHash,
-    action_hash: actionHash,
+    action_hash: inputHash,
+    context_limitation: "gateway_boundary",
   };
 }
