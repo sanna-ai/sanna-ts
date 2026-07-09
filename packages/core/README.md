@@ -101,7 +101,7 @@ const result = verifyReceipt(receipt as unknown as Record<string, unknown>, auth
 - `computeFingerprintInput(receipt)` — compute the pipe-delimited fingerprint input: 21-field (checks_version >= 10, v1.5), 20-field (cv >= 9, v1.4), 16-field (cv >= 8, v1.3), or 14/12-field for older receipts
 - `SPEC_VERSION` — protocol version (`"1.5"`)
 - `CHECKS_VERSION` — checks schema version (`"10"`)
-- `TOOL_VERSION` — package version string (`"1.5.0"`)
+- `TOOL_VERSION` — package version string (`"1.5.1"`)
 
 ### Verifier
 

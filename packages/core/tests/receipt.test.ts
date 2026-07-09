@@ -513,7 +513,7 @@ describe("v1.5 version constants (SAN-370)", () => {
   it("v1.5 version constants", () => {
     expect(SPEC_VERSION).toBe("1.5");
     expect(CHECKS_VERSION).toBe("10");
-    expect(TOOL_VERSION).toBe("1.5.0");
+    expect(TOOL_VERSION).toBe("1.5.1");
     expect(TOOL_NAME).toBe("sanna-ts");
   });
 });

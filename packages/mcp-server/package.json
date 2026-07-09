@@ -1,6 +1,6 @@
 {
   "name": "@sanna-ai/mcp-server",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "MCP server for the Sanna protocol",
   "license": "AGPL-3.0-only",
   "author": "Sanna Contributors",
