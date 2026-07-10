@@ -3,6 +3,14 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-07-09 (SAN-871)
+
+### Security
+- `@sanna-ai/core`: `signReceipt` now shares the proto-safe canonicalizer with `verifyReceipt`, completing SAN-818. SAN-818 fixed the `__proto__` canonical-JSON signature-integrity defect only in `packages/core/src/hashing.ts` (`normalizeFloats`); it left a local `sanitizeForSigning` function in `packages/core/src/receipt.ts` that shadowed the proto-safe one exported from `crypto.ts` and still used the proto-unsafe `result[k] = ...` bracket-assignment accumulation pattern. `signReceipt` used that local function while `verifyReceipt` used the proto-safe one, so a receipt whose content legitimately contained a `__proto__` own-key was signed over bytes that dropped `__proto__` but verified over bytes that kept it, causing self-verification of such a receipt to fail. `receipt.ts` now imports `sanitizeForSigning` from `crypto.ts` (the same proto-safe `normalizeFloats` alias `verifier.ts`, `constitution.ts`, and `aarm.ts` already use) instead of defining its own; the local function was deleted. Receipts whose content contains a `__proto__` own-key are now signed and verified consistently. No fingerprint or signature bytes change for receipts without a `__proto__` own-key.
+
+### Added
+- `packages/core/tests/san871-sign-verify-proto.test.ts` (new): a negative control proving sign bytes and verify bytes agreed for a `__proto__`-bearing receipt only after the fix (both the low-level byte reconstruction and the full `verifyReceipt` path), plus a tamper-in-transit guard proving `verifyReceipt` still rejects a `__proto__` injected into a receipt's `inputs` after signing (guards the pre-existing SAN-818 verify-side fix against regression).
+
 ## [Unreleased] -- 2026-07-09 (SAN-863)
 
 ### Changed
