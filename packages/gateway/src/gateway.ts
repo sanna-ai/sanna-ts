@@ -124,6 +124,10 @@ export class SannaGateway {
   private _manifestEmitPromise: Promise<boolean> | null = null; // SAN-380
   private _manifestFullFingerprint: string | null = null;
   private _suppressedToolNames: Set<string> = new Set();
+  // SAN-828: one-time warning when a config still lists "inline" as an
+  // escalation token delivery method (it is unsupported — returning the
+  // token in the agent-visible response allows self-approval).
+  private _inlineDeliveryWarned = false;
   private _allTools: Array<{
     name: string;
     description?: string;
@@ -688,8 +692,42 @@ export class SannaGateway {
               this._escalationReceiptFingerprints.set(esc.escalation_id, escFp);
             }
 
-            // Deliver token via configured methods (best-effort)
-            const deliveryMethods = this._config.escalation?.delivery_methods ?? ["inline"];
+            // SAN-828: deliver the approval token out-of-band only. The
+            // token must NEVER appear in the agent-visible response below —
+            // doing so let the escalating agent recover its own token and
+            // approve itself. "inline" is not a supported delivery channel;
+            // the default is "stderr" (operator console, not the agent's
+            // stdout/JSON-RPC channel), matching the Python gateway
+            // (server.py _deliver_token / ["stderr"] default).
+            const configuredMethods =
+              this._config.escalation?.delivery_methods ?? ["stderr"];
+
+            if (configuredMethods.includes("inline") && !this._inlineDeliveryWarned) {
+              this._inlineDeliveryWarned = true;
+              process.stderr.write(
+                "[sanna-gateway] WARNING: escalation.delivery_methods lists " +
+                  "'inline', which is unsupported and ignored -- inline " +
+                  "delivery returned the approval token in the agent-visible " +
+                  "response, allowing an agent to approve its own " +
+                  "escalation. Configure an out-of-band channel (stderr, " +
+                  "file, or webhook) instead.\n",
+              );
+            }
+            const deliveryMethods = configuredMethods.filter(
+              (m) => m !== "inline",
+            );
+
+            if (deliveryMethods.includes("stderr")) {
+              // Mirror server.py:1263-1275 exactly: write directly to
+              // process.stderr, not through a logger that could route
+              // elsewhere (e.g. into the agent-visible channel).
+              process.stderr.write(
+                `[SANNA] Approval token for escalation ${esc.escalation_id}: ${esc.token}\n`,
+              );
+              process.stderr.write(
+                "[SANNA] Provide this token to approve the action.\n",
+              );
+            }
 
             if (deliveryMethods.includes("webhook") && this._config.escalation?.webhook_url) {
               deliverTokenViaWebhook(
@@ -705,11 +743,19 @@ export class SannaGateway {
                   headers: this._config.escalation.webhook_headers,
                 },
               ).catch(() => {
-                // Best-effort — webhook failure doesn't block inline response
+                // Best-effort — webhook failure doesn't block the response
               });
             }
 
             if (deliveryMethods.includes("file")) {
+              // Mirror server.py:1278-1283: file-based delivery is
+              // self-approvable by any agent with file-reading tools.
+              process.stderr.write(
+                "[sanna-gateway] WARNING: writing approval token to file. " +
+                  "File-based token delivery is insecure -- agents with " +
+                  "file-reading tools can self-approve their own " +
+                  "escalation.\n",
+              );
               try {
                 deliverTokenToFile(
                   {
@@ -725,8 +771,21 @@ export class SannaGateway {
                   },
                 );
               } catch {
-                // Best-effort — file delivery failure doesn't block inline response
+                // Best-effort — file delivery failure doesn't block the response
               }
+            }
+
+            if (deliveryMethods.length === 0) {
+              // FAIL-CLOSED: no out-of-band channel is configured. Never
+              // fall back to inline — leave the escalation pending and
+              // unapprovable until an operator configures a real channel.
+              process.stderr.write(
+                `[sanna-gateway] WARNING: escalation ${esc.escalation_id} has ` +
+                  "no out-of-band delivery channel configured (delivery_methods " +
+                  "is empty after removing unsupported 'inline'); it cannot be " +
+                  "approved until stderr, file, or webhook delivery is " +
+                  "configured. Leaving it pending.\n",
+              );
             }
 
             return {
@@ -737,7 +796,6 @@ export class SannaGateway {
                     status: "escalated",
                     reason: effectiveDecision.reason,
                     escalation_id: esc.escalation_id,
-                    token: esc.token,
                     expires_at: esc.expires_at,
                     receipt_id: receipt.receipt_id,
                   }),

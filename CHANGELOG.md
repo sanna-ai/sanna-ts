@@ -3,6 +3,15 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-07-10 (SAN-828)
+
+### Security
+- `@sanna-ai/gateway`: the escalation approval token is no longer returned in the agent-visible MCP tool response. `_handleToolCall`'s escalate branch (`packages/gateway/src/gateway.ts`) previously put `token: esc.token` directly into the JSON returned to the calling agent, and `delivery_methods` defaulted to `["inline"]` -- so an agent that triggered an escalation received the very token needed to approve it, and could call `sanna_approve_escalation` on itself with no operator involved. The escalated response now returns only `status`, `reason`, `escalation_id`, `expires_at`, and `receipt_id`. Token delivery is now out-of-band: the default delivery method is `"stderr"` (matching the Python gateway's `token_delivery = token_delivery or ["stderr"]` / `_deliver_token`, `src/sanna/gateway/server.py`), which writes `[SANNA] Approval token for escalation <id>: <token>` directly to `process.stderr` -- the operator's console, not the agent's stdout/JSON-RPC channel. `"inline"` is no longer a supported delivery channel: if a config still lists it, it is ignored and a one-time warning is written to stderr explaining why. `"file"` delivery now emits the same insecurity warning Python does (agents with file-reading tools can read a file-delivered token and self-approve). If the effective delivery list is empty after removing `"inline"`, the gateway fails closed -- it warns to stderr that the escalation has no out-of-band channel and cannot be approved, and leaves it pending, rather than falling back to inline. The escalation store (`packages/gateway/src/escalation.ts`, hash-only at rest) and the approve-handler's token verification (`gateway.ts` `_handleMetaTool`) are unchanged.
+- Scoped claim: this closes self-approval for an agent that interacts with the gateway only through MCP tool calls. It does not defend against an agent with independent access to the gateway's `hmac_secret` (which could recompute a valid token) or to an agent-readable delivery channel such as the token file (`escalation.token_file_path`). Operators who need the file channel should treat it as agent-readable and prefer `stderr` or `webhook` to an operator-controlled endpoint.
+
+### Fixed
+- `packages/gateway/tests/gateway.test.ts` ("should handle escalation flow ...") rewritten into a negative-control plus positive-path test: it asserts the escalate response carries no `token` field, that an approval attempt built only from the fields the agent actually received fails and does not forward the original call, and that approval succeeds only with the raw token recovered from captured stderr output. Both the no-inline-token and cannot-self-approve assertions were RED against the pre-fix code (the pre-fix self-approval attempt actually succeeded, using the token straight out of the agent's own response).
+
 ## [Unreleased] -- 2026-07-10 (SAN-873)
 
 ### Fixed

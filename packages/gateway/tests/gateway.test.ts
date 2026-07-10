@@ -187,7 +187,7 @@ describe("SannaGateway", () => {
     expect(parsed.status).toBe("denied");
   }, 30_000);
 
-  it("should handle escalation flow", async () => {
+  it("should handle escalation flow with the token delivered out-of-band, never inline (SAN-828)", async () => {
     const config = makeConfig({
       downstreams: [
         {
@@ -200,34 +200,91 @@ describe("SannaGateway", () => {
       escalation: {
         hmac_secret: "test-secret",
         ttl_seconds: 300,
+        // No delivery_methods override — exercises the default (stderr).
       },
     });
-    const { client } = await createTestClient(config);
 
-    // Tool call should be escalated
-    const result = await client.callTool({
-      name: "echo_echo",
-      arguments: { text: "needs approval" },
-    });
-    const text = (result.content[0] as any).text;
-    const parsed = JSON.parse(text);
-    expect(parsed.status).toBe("escalated");
-    expect(parsed.escalation_id).toBeTruthy();
-    expect(parsed.token).toBeTruthy();
+    // Capture stderr so the raw token can be recovered the way an
+    // operator console would see it — never from the agent's response.
+    const stderrChunks: Buffer[] = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = function (chunk: any, ...args: any[]) {
+      stderrChunks.push(Buffer.from(chunk));
+      return originalWrite.call(process.stderr, chunk, ...args);
+    } as typeof process.stderr.write;
 
-    // Approve the escalation
-    const approveResult = await client.callTool({
-      name: "sanna_approve_escalation",
-      arguments: {
-        escalation_id: parsed.escalation_id,
-        token: parsed.token,
-      },
-    });
-    // Should have forwarded the original call after approval
-    const approveTexts = approveResult.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text);
-    expect(approveTexts.some((t: string) => t === "needs approval")).toBe(true);
+    try {
+      const { client } = await createTestClient(config);
+
+      // Tool call should be escalated.
+      const result = await client.callTool({
+        name: "echo_echo",
+        arguments: { text: "needs approval" },
+      });
+      const text = (result.content[0] as any).text;
+      const parsed = JSON.parse(text);
+      expect(parsed.status).toBe("escalated");
+      expect(parsed.escalation_id).toBeTruthy();
+      expect(parsed.expires_at).toBeTruthy();
+
+      // A. NO INLINE TOKEN: the agent-visible response must never carry
+      // the raw approval token. Returning it here is exactly what let the
+      // escalating agent approve its own action.
+      expect(parsed.token).toBeUndefined();
+
+      // B. AGENT CANNOT SELF-APPROVE FROM ITS RESPONSE: build an approval
+      // attempt using only fields the agent actually received (no token
+      // field to draw from — this stands in for an agent that tries to
+      // approve using whatever it got back). It must fail, and the
+      // original call must NOT be forwarded.
+      const selfApproveResult = await client.callTool({
+        name: "sanna_approve_escalation",
+        arguments: {
+          escalation_id: parsed.escalation_id,
+          token: String((parsed as Record<string, unknown>).token ?? ""),
+        },
+      });
+      expect(selfApproveResult.isError).toBe(true);
+      const selfApproveTexts = selfApproveResult.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text);
+      expect(
+        selfApproveTexts.some((t: string) => t === "needs approval"),
+      ).toBe(false);
+
+      // C. LEGITIMATE APPROVAL via an OUT-OF-BAND token: recover the raw
+      // token from the stderr console (the operator's channel), matching
+      // the "[SANNA] Approval token for escalation <id>: <token>" format
+      // the Python gateway also emits.
+      const stderrOutput = Buffer.concat(stderrChunks).toString("utf-8");
+      const tokenMatch = stderrOutput.match(
+        new RegExp(
+          `\\[SANNA\\] Approval token for escalation ${parsed.escalation_id}: ([a-f0-9]{64})`,
+        ),
+      );
+      expect(tokenMatch).toBeTruthy();
+      const outOfBandToken = tokenMatch![1];
+      expect(stderrOutput).toContain(
+        "[SANNA] Provide this token to approve the action.",
+      );
+
+      const approveResult = await client.callTool({
+        name: "sanna_approve_escalation",
+        arguments: {
+          escalation_id: parsed.escalation_id,
+          token: outOfBandToken,
+        },
+      });
+      // Should have forwarded the original call after approval.
+      const approveTexts = approveResult.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text);
+      expect(approveTexts.some((t: string) => t === "needs approval")).toBe(
+        true,
+      );
+    } finally {
+      process.stderr.write = originalWrite;
+    }
   }, 30_000);
 
   it("should deny escalation with invalid token", async () => {
