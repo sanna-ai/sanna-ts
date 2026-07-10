@@ -3,6 +3,17 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-07-10 (SAN-873)
+
+### Fixed
+- `@sanna-ai/core`: the receipt-schema verifier is now self-contained -- the schema is bundled into `dist` at build time instead of being read from disk at runtime. `verifyReceipt` previously returned `valid=false` for ALL receipts, valid or not, in any published install: `getAjvValidator` (`packages/core/src/verifier.ts`) loaded `receipt.schema.json` via `readFileSync` from a path relative to the running module (`../../../spec/schemas/receipt.schema.json`), which only resolves inside this repo tree -- the `spec` git submodule is not shipped in the npm tarball (`packages/core/package.json` `files` lists only `dist`, `README.md`, `LICENSE`). The CJS build additionally failed before reaching `readFileSync`: tsup shims `import.meta` as `{}` for CJS output, so `import.meta.url` was `undefined` and `fileURLToPath(undefined)` threw. Both are fixed: `verifier.ts` now imports the schema directly (`import receiptSchema from "../../../spec/schemas/receipt.schema.json"`), which tsup/esbuild inlines into both `dist/index.js` and `dist/index.cjs` at build time, and the now-unused `readFileSync`/`resolve`/`dirname`/`fileURLToPath` imports were removed. `verifyReceipt` now works from installed packages via ESM and CJS, on any Node version, with no runtime filesystem read -- and still enforces the schema (compiles the same `allOf` conditional-rules slice as before; nothing about what the schema validates has changed).
+
+### Added
+- `packages/core/tests/san873-packaged-verifier.test.ts` (new): a regression test that can only observe this class of defect -- it packs the built `@sanna-ai/core` dist with `npm pack`, installs the tarball OFFLINE into a fresh temp directory outside the repo tree, and drives `verifyReceipt` from spawned ESM and CJS consumer scripts that `import`/`require("@sanna-ai/core")` like a real downstream consumer. Asserts a freshly signed valid receipt verifies `true` with no schema-load error (both module systems), and a positive control: a receipt that satisfies the `if` but violates the `then` of allOf rule `CFC-A` (`enforcement.halt_reason` present requires `enforcement.action="halted"`, spec Section 4.6) is rejected with a genuine ajv/schema-validation error -- proving the bundled schema is real and enforcing, not an empty or permissive stand-in.
+
+### Chore
+- `.gitignore`: added `.claude/worktrees/` -- leftover embedded git worktree directories from agent sessions were untracked but not previously ignored.
+
 ## [Unreleased] -- 2026-07-09 (SAN-871)
 
 ### Security
