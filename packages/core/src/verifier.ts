@@ -6,12 +6,11 @@
  */
 
 import type { KeyObject } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+
+import receiptSchema from "../../../spec/schemas/receipt.schema.json";
 
 import { canonicalize, hashObj } from "./hashing.js";
 import { verify, getKeyId, sanitizeForSigning } from "./crypto.js";
@@ -38,6 +37,16 @@ const NON_EVALUATED = new Set(["NOT_CHECKED", "ERRORED"]);
 // Catches conditional allOf rules (B1/B2/A1/A3/B3/B4/MODIFY/R1/R2) that
 // the hand-rolled checks below do not cover.
 //
+// SAN-873: the schema is imported at build time (not read from disk at
+// runtime) so it is bundled into dist/index.js and dist/index.cjs by
+// tsup/esbuild. Previously this loaded receipt.schema.json via
+// readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), ...)),
+// which only worked inside this repo tree (the spec submodule is not
+// shipped in the published tarball -- packages/core/package.json `files`
+// only lists dist/README.md/LICENSE) and additionally threw in the CJS
+// build because tsup shims import.meta as {} for CJS output, making
+// import.meta.url undefined and fileURLToPath(undefined) throw.
+//
 // `any` casts mirror the test pattern (ajv as any) to satisfy the DTS
 // builder -- Ajv2020/addFormats types don't satisfy TS2020's constructor
 // constraint when resolved via Node16 moduleResolution.
@@ -47,9 +56,7 @@ let _ajvValidate: ((data: unknown) => boolean) & { errors?: any[] | null } | nul
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getAjvValidator(): ((data: unknown) => boolean) & { errors?: any[] | null } {
   if (_ajvValidate) return _ajvValidate;
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const schemaPath = resolve(__dirname, "../../../spec/schemas/receipt.schema.json");
-  const fullSchema = JSON.parse(readFileSync(schemaPath, "utf-8")) as { allOf?: unknown[] };
+  const fullSchema = receiptSchema as { allOf?: unknown[] };
   // Compile ONLY the allOf conditional rules, not the full property/required
   // definitions. The hand-rolled checks above already cover unconditional
   // required-field rules; running the full schema would duplicate those with
