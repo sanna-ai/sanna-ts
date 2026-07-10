@@ -149,20 +149,33 @@ describe("SAN-873: packaged verifier is self-contained (schema bundled into dist
       JSON.stringify({ name: "san873-pkg-test", version: "0.0.0", private: true }, null, 2),
     );
 
-    // Hermetic, offline install: no network access. Requires the npm cache
-    // to already contain the tarball's runtime deps (adm-zip, ajv,
-    // ajv-formats, better-sqlite3, canonicalize, js-yaml, safe-regex2),
-    // which a prior `npm ci` in the repo populates.
+    // Cache-first install of the packed tarball's runtime deps (adm-zip,
+    // ajv, ajv-formats, better-sqlite3, canonicalize, js-yaml,
+    // safe-regex2). `--prefer-offline` uses the npm cache when a dep is
+    // present and falls back to the registry only for what is missing:
+    // locally a prior `npm ci` has already cached everything (no network),
+    // while in CI the download cache is not guaranteed to hold these
+    // tarballs (node_modules is often restored from actions/cache without
+    // repopulating the download cache), so a strict `--offline`
+    // (cache-only) install would ENOTCACHED-fail there. If beforeAll
+    // throws, vitest marks this file's assertions as SKIPPED (not failed)
+    // -- a skipped security assertion reads as enforced but is not -- so
+    // the throw below is deliberately loud and this must never be softened
+    // into a skip-to-green. `--ignore-scripts` skips better-sqlite3's
+    // native postinstall build: the verify path never touches sqlite and
+    // core lazy-loads it, so the build is unnecessary for reaching
+    // verifyReceipt and only adds a flaky native-toolchain dependency to
+    // the temp install.
     const installResult = spawnSync(
       "npm",
-      ["install", tgzPath, "--offline", "--no-save"],
+      ["install", tgzPath, "--prefer-offline", "--no-save", "--ignore-scripts"],
       { cwd: workDir, encoding: "utf-8" },
     );
     if (installResult.status !== 0) {
       throw new Error(
-        `npm install --offline failed (exit ${installResult.status}); the npm cache must ` +
-          `be pre-populated by a prior 'npm ci' in the repo for this hermetic install to ` +
-          `succeed: ${installResult.stderr}`,
+        `npm install --prefer-offline failed (exit ${installResult.status}). This setup ` +
+          `MUST fail loud, never skip-to-green: the assertions guarding the packaged ` +
+          `verifier are security assertions. stderr:\n${installResult.stderr}`,
       );
     }
 
