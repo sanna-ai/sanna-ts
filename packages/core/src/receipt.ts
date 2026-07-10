@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import type { KeyObject } from "node:crypto";
 
 import { EMPTY_HASH, canonicalize, hashContent, hashObj } from "./hashing.js";
-import { sign, getKeyId } from "./crypto.js";
+import { sign, getKeyId, sanitizeForSigning } from "./crypto.js";
 import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -286,32 +286,6 @@ export function computeFingerprints(receipt: Record<string, unknown>): {
 }
 
 // ── Receipt signing ──────────────────────────────────────────────────
-
-/**
- * Sanitize a value tree for signing: convert exact-integer floats to int,
- * reject non-integer floats.
- */
-function sanitizeForSigning(obj: unknown): unknown {
-  if (typeof obj === "number") {
-    if (!Number.isFinite(obj)) {
-      throw new Error(`Non-finite number in signed content: ${obj}`);
-    }
-    if (Number.isInteger(obj)) return obj;
-    if (obj === Math.trunc(obj)) return Math.trunc(obj);
-    throw new Error(`Non-integer float in signed content: ${obj}`);
-  }
-  if (Array.isArray(obj)) {
-    return obj.map((v) => sanitizeForSigning(v));
-  }
-  if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      result[k] = sanitizeForSigning(v);
-    }
-    return result;
-  }
-  return obj;
-}
 
 /**
  * Sign a receipt dict and add receipt_signature block.
