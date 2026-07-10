@@ -3,6 +3,18 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-07-10 (SAN-836)
+
+### Changed
+- BREAKING BEHAVIOR CHANGE: `sannaObserve` and `withSannaGovernance` (`packages/core/src/middleware.ts`) now default to `enforcementMode: "enforced"` (was `"advisory"`), matching the Python SDK's `@sanna_observe` decorator, which has no mode toggle and always enforces. Previously, a constitution with a halt-severity condition (a `cannot_execute` authority boundary, or an invariant/coherence check whose failure resolves to `critical` or `high` severity) was detected but not enforced by default -- the wrapped function's result was returned to the caller as if nothing had happened. The same constitution now HALTS by default (throws `SannaHaltError`), matching what Python has always done. Callers who want observe-only behavior must now pass `enforcementMode: "advisory"` explicitly; `"permissive"` (skips coherence checks entirely) is unchanged. Checks that fail at `"warn"` or `"log"` enforcement level (severity `medium`/`low`, outside `HALT_SEVERITIES = {critical, high}`) are still recorded on the receipt but never halt, in any mode -- this flip is scoped to the default value only and does not touch halt-severity gating. This is a DEFAULT-POSTURE change only: it does not make TS's and Python's halt conditions identical (which conditions resolve to a halt-severity check still differs cross-SDK; tracked separately under SAN-849/850/851). `@sanna-ai/gateway` and `@sanna-ai/mcp-server` are out of scope -- both have their own independent `enforcement.mode` configuration and do not call `sannaObserve`.
+- Composition note: TS fails closed on invariants it cannot classify (`UNKNOWN_TYPE` status, severity derived from the invariant's own `enforcement: "halt"` setting -> `critical`) -- a separate, already-tracked over-block defect (SAN-850). Because the new default is `"enforced"`, that over-block is now default-active for any constitution containing an invariant TS does not recognize, where previously it was inert under the advisory default. SAN-850 is a required companion fix in the same release batch as this change.
+
+### Fixed
+- `packages/core/tests/middleware.test.ts`, `packages/core/tests/middleware-sink.test.ts`, `packages/core/tests/redaction.test.ts`: tests that wrapped a halt-severity constitution without an explicit `enforcementMode` and asserted continuation are migrated by intent. Tests whose purpose was observing receipt/sink/redaction content (not enforcement) are pinned to `enforcementMode: "advisory"` explicitly, preserving their pre-flip behavior byte-for-byte. The one test whose purpose was the default itself (`should default to advisory mode`) is renamed and rewritten to assert the new enforced default.
+
+### Added
+- `packages/core/tests/san836-enforcing-default.test.ts` (new): isolates the default-flip from SAN-850 by using only recognized halt conditions (an authority `cannot_execute` boundary; a recognized `required_keywords` invariant) -- never the unrecognized-invariant shape SAN-850 covers. Asserts the new default enforces on a clean halt condition, that explicit `"advisory"` still opts out, that an all-recognized-and-passing constitution is not over-blocked, and that a recognized invariant failing at `"warn"` severity is recorded but does not halt.
+
 ## [Unreleased] -- 2026-07-10 (SAN-828)
 
 ### Security

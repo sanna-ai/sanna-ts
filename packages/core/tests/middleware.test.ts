@@ -1,3 +1,18 @@
+// SAN-836 TEST MIGRATION NOTE: sannaObserve's default enforcementMode
+// flipped from "advisory" to "enforced" (matching Python's always-enforcing
+// @sanna_observe). makeConstitution()'s default invariant below
+// (INV_NO_FABRICATION, rule "No fabrication", enforcement: "halt", check:
+// null) resolves to UNKNOWN_TYPE -- a separate, already-tracked fail-closed
+// bug (SAN-850) that treats unrecognized invariants as critical-severity
+// failures. Under the new enforced default this incidentally halts every
+// test below that relies on that default fixture purely for plumbing
+// (receipt shape, sink integration, input resolution, redaction markers)
+// and was never testing enforcement/halting as its purpose. Those tests
+// are pinned to `enforcementMode: "advisory"` explicitly -- byte-identical
+// to their pre-flip implicit-advisory behavior -- so they keep verifying
+// what they were built to verify. Only "should default to advisory mode"
+// (now "should default to enforced mode") tested the default itself, so
+// it is migrated to expect the new enforcing behavior instead.
 import { describe, it, expect, afterEach } from "vitest";
 import {
   sannaObserve,
@@ -55,8 +70,10 @@ function piiAgent(_input: { query: string }): string {
 
 describe("sannaObserve", () => {
   it("should wrap a function and return SannaResult", () => {
+    // SAN-836: observation-only (SannaResult shape) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "What is the policy?", context: "The policy states rules" });
@@ -68,8 +85,10 @@ describe("sannaObserve", () => {
   });
 
   it("should generate a receipt with check results", () => {
+    // SAN-836: observation-only (receipt.checks populated) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "Test query", context: "Test context" });
@@ -78,8 +97,9 @@ describe("sannaObserve", () => {
   });
 
   it("should include constitution_ref in receipt", () => {
+    // SAN-836: observation-only (constitution_ref field) -- see file header.
     const constitution = makeConstitution();
-    const governed = sannaObserve(echoAgent, { constitution });
+    const governed = sannaObserve(echoAgent, { constitution, enforcementMode: "advisory" });
 
     const result = governed({ query: "test" });
     expect(result.receipt.constitution_ref).toBeDefined();
@@ -97,8 +117,10 @@ describe("sannaObserve", () => {
   });
 
   it("should resolve query and context from object argument", () => {
+    // SAN-836: observation-only (receipt.inputs resolution) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "What is the refund policy?", context: "Refund policy information" });
@@ -174,7 +196,13 @@ describe("enforcement modes", () => {
     expect(result.halted).toBe(false);
   });
 
-  it("should default to advisory mode", () => {
+  it("should default to enforced mode (SAN-836)", () => {
+    // SAN-836: default flipped advisory -> enforced, matching Python's
+    // always-enforcing @sanna_observe. This test's purpose IS the default
+    // itself, so it is migrated to expect the new enforcing behavior
+    // rather than pinned to advisory. INV_PII is a fully recognized
+    // invariant type (pii_detection), so this halt is not a SAN-850
+    // UNKNOWN_TYPE artifact.
     const constitution = makeConstitution({
       invariants: [
         { id: "INV_PII", rule: "No PII in output", enforcement: "halt", check: null },
@@ -183,9 +211,8 @@ describe("enforcement modes", () => {
 
     const governed = sannaObserve(piiAgent, { constitution });
 
-    // Should not throw in default (advisory) mode
-    const result = governed({ query: "test" });
-    expect(result.halted).toBe(false);
+    // Should throw in the new default (enforced) mode.
+    expect(() => governed({ query: "test" })).toThrow(SannaHaltError);
   });
 });
 
@@ -261,8 +288,10 @@ describe("authority evaluation", () => {
 
 describe("withSannaGovernance", () => {
   it("should return a wrapper function", () => {
+    // SAN-836: observation-only (withSannaGovernance API surface) -- see file header.
     const govern = withSannaGovernance({
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     expect(typeof govern).toBe("function");
@@ -274,8 +303,10 @@ describe("withSannaGovernance", () => {
   });
 
   it("should apply governance to multiple functions", () => {
+    // SAN-836: observation-only (govern() applied to multiple fns) -- see file header.
     const govern = withSannaGovernance({
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const fn1 = govern((x: string) => `fn1: ${x}`);
@@ -343,8 +374,10 @@ describe("input resolution", () => {
       return `${input.query} + ${input.context}`;
     }
 
+    // SAN-836: observation-only (input key resolution) -- see file header.
     const governed = sannaObserve(agent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "my query", context: "my context" });
@@ -356,8 +389,10 @@ describe("input resolution", () => {
       return `${input.prompt} / ${input.documents}`;
     }
 
+    // SAN-836: observation-only (alternative key-name resolution) -- see file header.
     const governed = sannaObserve(agent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ prompt: "the prompt", documents: "the docs" });
@@ -369,10 +404,12 @@ describe("input resolution", () => {
       return `${input.q} - ${input.ctx}`;
     }
 
+    // SAN-836: observation-only (explicit contextParam/queryParam) -- see file header.
     const governed = sannaObserve(agent, {
       constitution: makeConstitution(),
       queryParam: "q",
       contextParam: "ctx",
+      enforcementMode: "advisory",
     });
 
     const result = governed({ q: "custom query", ctx: "custom context" });
@@ -385,8 +422,10 @@ describe("input resolution", () => {
 
 describe("receipt structure", () => {
   it("should have valid receipt fields", () => {
+    // SAN-836: observation-only (receipt field shape) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test", context: "context" });
@@ -404,8 +443,13 @@ describe("receipt structure", () => {
   });
 
   it("should compute fingerprints", () => {
+    // SAN-836: observation-only (fingerprint length/shape, not byte value)
+    // -- pinned to advisory so this exercises the exact same code path
+    // (byte-identical to pre-flip implicit advisory) it always has; no
+    // fingerprint value changes as a result of this migration.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -420,8 +464,14 @@ describe("SAN-863: invariants_scope derivation via sannaObserve", () => {
     // makeConstitution()'s default invariant has rule "No fabrication" and
     // check: null -- detectInvariantType finds no match, so it resolves to
     // UNKNOWN_TYPE (no built-in runner, no registered custom evaluator).
+    // SAN-836: observation-only (invariants_scope/coverage-extension
+    // derivation) -- this test exists specifically to exercise the
+    // UNKNOWN_TYPE/SAN-850 scenario as DATA, not to test enforcement; it
+    // requires a normal (non-halted) completion so receipt.invariants_scope
+    // can be inspected. Pinned to advisory -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test", context: "context" });

@@ -1,3 +1,18 @@
+// SAN-836 TEST MIGRATION NOTE: sannaObserve's default enforcementMode
+// flipped from "advisory" to "enforced" (matching Python's always-enforcing
+// @sanna_observe). makeConstitution()'s default invariant below
+// (INV_NO_FABRICATION, rule "No fabrication", enforcement: "halt", check:
+// null) resolves to UNKNOWN_TYPE -- a separate, already-tracked fail-closed
+// bug (SAN-850) that treats unrecognized invariants as critical-severity
+// failures. Under the new enforced default this incidentally halts every
+// sink-integration test below, none of which test enforcement/halting as
+// their purpose (they test sink.store() plumbing, receipt field
+// propagation, and NullSink no-op behavior). Those tests are pinned to
+// `enforcementMode: "advisory"` explicitly -- byte-identical to their
+// pre-flip implicit-advisory behavior -- so they keep verifying what they
+// were built to verify. "sink.store called even on halted receipts"
+// already used an explicit enforced/authority-halt constitution and is
+// unaffected by this migration.
 import { describe, it, expect, vi } from "vitest";
 import {
   sannaObserve,
@@ -54,10 +69,12 @@ function piiAgent(_input: { query: string }): string {
 
 describe("middleware sink integration", () => {
   it("sink.store() called after receipt generation", async () => {
+    // SAN-836: observation-only (sink.store call plumbing) -- see file header.
     const sink = makeMockSink();
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
+      enforcementMode: "advisory",
     });
 
     governed({ query: "test", context: "context" });
@@ -69,10 +86,12 @@ describe("middleware sink integration", () => {
   });
 
   it("receipt still returned in result even with sink", () => {
+    // SAN-836: observation-only (result.receipt presence) -- see file header.
     const sink = makeMockSink();
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -81,8 +100,10 @@ describe("middleware sink integration", () => {
   });
 
   it("backward compat: no sink means no persistence (no error)", () => {
+    // SAN-836: observation-only (sink-omission does not error) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -91,10 +112,12 @@ describe("middleware sink integration", () => {
   });
 
   it("sink.store() receives the generated receipt", async () => {
+    // SAN-836: observation-only (sink receives matching receipt_id) -- see file header.
     const sink = makeMockSink();
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test", context: "ctx" });
@@ -112,9 +135,11 @@ describe("middleware sink integration", () => {
       store: vi.fn().mockRejectedValue(new Error("storage failure")),
     };
 
+    // SAN-836: observation-only (sink.store rejection does not propagate) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
+      enforcementMode: "advisory",
     });
 
     // Should not throw even though sink.store rejects
@@ -124,10 +149,12 @@ describe("middleware sink integration", () => {
   });
 
   it("sink.store() receiving correct receipt_id", async () => {
+    // SAN-836: observation-only (stored receipt_id format/match) -- see file header.
     const sink = makeMockSink();
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -142,12 +169,14 @@ describe("middleware sink integration", () => {
   });
 
   it("parentReceipts option propagated to receipt", () => {
+    // SAN-836: observation-only (parentReceipts field propagation) -- see file header.
     const sink = makeMockSink();
     const parentIds = ["parent-receipt-001", "parent-receipt-002"];
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
       parentReceipts: parentIds,
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -155,11 +184,13 @@ describe("middleware sink integration", () => {
   });
 
   it("workflowId option propagated to receipt", () => {
+    // SAN-836: observation-only (workflowId field propagation) -- see file header.
     const sink = makeMockSink();
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink,
       workflowId: "workflow-abc-123",
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -167,8 +198,11 @@ describe("middleware sink integration", () => {
   });
 
   it("parentReceipts null by default (not in fingerprint)", () => {
+    // SAN-836: observation-only (default-null field, not a fingerprint value
+    // test) -- pinned advisory, byte-identical to pre-flip -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -177,8 +211,11 @@ describe("middleware sink integration", () => {
   });
 
   it("workflowId null by default (not in fingerprint)", () => {
+    // SAN-836: observation-only (default-null field, not a fingerprint value
+    // test) -- pinned advisory, byte-identical to pre-flip -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -187,8 +224,10 @@ describe("middleware sink integration", () => {
   });
 
   it("content_mode and content_mode_source not in receipt by default", () => {
+    // SAN-836: observation-only (default-absent fields) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -198,8 +237,10 @@ describe("middleware sink integration", () => {
   });
 
   it("receipt has spec_version 1.4", () => {
+    // SAN-836: observation-only (spec_version field, not enforcement) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -207,8 +248,10 @@ describe("middleware sink integration", () => {
   });
 
   it("receipt has checks_version 9", () => {
+    // SAN-836: observation-only (checks_version field, not enforcement) -- see file header.
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test" });
@@ -252,10 +295,12 @@ describe("middleware sink integration", () => {
   });
 
   it("NullSink as a sink produces no errors", async () => {
+    // SAN-836: observation-only (NullSink no-op behavior) -- see file header.
     const nullSink = new NullSink();
     const governed = sannaObserve(echoAgent, {
       constitution: makeConstitution(),
       sink: nullSink,
+      enforcementMode: "advisory",
     });
 
     const result = governed({ query: "test", context: "ctx" });

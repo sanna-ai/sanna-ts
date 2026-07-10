@@ -427,7 +427,7 @@ export function sannaObserve<TArgs extends unknown[], TReturn>(
   fn: (...args: TArgs) => TReturn,
   options: SannaObserveOptions = {},
 ): (...args: TArgs) => SannaResult<TReturn> {
-  const enforcementMode = options.enforcementMode ?? "advisory";
+  const enforcementMode = options.enforcementMode ?? "enforced";
   let constitution: Constitution | undefined;
   let signingKey: KeyObject | undefined;
   let initialized = false;
