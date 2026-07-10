@@ -371,6 +371,10 @@ function generateGovernanceReceipt(params: GovernanceReceiptParams): Receipt {
     workflow_id: params.workflowId,
     enforcementSurface: "middleware",
     invariantsScope: "full",
+    // SAN-863: the true declared-invariant list is reachable here via the
+    // resolved constitution, so pass it instead of relying on the
+    // triggered_by fallback proxy inside deriveInvariantsScope.
+    declaredInvariantIds: params.constitution?.invariants.map((inv) => inv.id),
     ...(params.agentModel !== undefined && { agent_model: params.agentModel }),
     ...(params.agentModelProvider !== undefined && { agent_model_provider: params.agentModelProvider }),
     ...(params.agentModelVersion !== undefined && { agent_model_version: params.agentModelVersion }),

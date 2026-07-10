@@ -16,7 +16,7 @@ import type { Receipt, CheckResult, ReceiptSignature, ContentMode } from "./type
 
 export const SPEC_VERSION = "1.5";
 export const CHECKS_VERSION = "10"; // SAN-370 v1.5: agent_identity_hash at field 21
-export const TOOL_VERSION = "1.5.1"; // SAN-848: gateway receipt-triad placement fix
+export const TOOL_VERSION = "1.5.2"; // SAN-863: derive invariants_scope from observed execution
 export const TOOL_NAME = "sanna-ts"; // v1.4: canonical SDK identity per spec §2.17
 
 // ── Fingerprint computation ──────────────────────────────────────────
@@ -349,6 +349,127 @@ export function signReceipt(
   return receipt;
 }
 
+// ── Invariants scope derivation (SAN-863) ────────────────────────────
+
+/**
+ * Statuses that mean a declared invariant's rule did NOT run, for coverage
+ * purposes (spec 2.16.2). Python's non-evaluated set is {NOT_CHECKED,
+ * ERRORED}; TS's built-in invariant runners (invariants.ts) also emit
+ * UNKNOWN_TYPE (rule type undetectable/unrecognized) and UNSAFE_PATTERN
+ * (regex rejected before evaluation, fail-closed ReDoS guard) -- both mean
+ * the rule never ran. Copying Python's narrower set would be wrong for TS.
+ *
+ * Coverage (did the rule run) and outcome (passed/failed) are orthogonal:
+ * three of these four statuses carry passed: false, which is an existing,
+ * separate enforcement concern this derivation does not touch or change.
+ */
+const NOT_EVALUATED_STATUSES = new Set([
+  "NOT_CHECKED",
+  "ERRORED",
+  "UNKNOWN_TYPE",
+  "UNSAFE_PATTERN",
+]);
+
+/**
+ * True when a check's status indicates its declared rule actually executed.
+ * status may be undefined, null, or a string -- only membership in the
+ * not-evaluated set counts as "did not run". undefined and null both mean
+ * "ran and produced a normal result" (sanna-openclaw's in-process regex_deny
+ * re-evaluation sets status = null on its pass path; the built-in runners in
+ * invariants.ts leave status undefined on their pass/fail paths). Any other
+ * unrecognized string is also treated as evaluated -- the not-evaluated set
+ * is an explicit allow-list, not a deny-list, so an unknown future status
+ * never silently loses coverage. Never key on `status === undefined` alone.
+ */
+function wasInvariantEvaluated(status: unknown): boolean {
+  if (status === undefined || status === null) return true;
+  return !NOT_EVALUATED_STATUSES.has(String(status));
+}
+
+interface InvariantsScopeDerivation {
+  scope: string;
+  coverageExtension: Record<string, unknown> | null;
+}
+
+/**
+ * Derive invariants_scope and, when limited, a com.sanna.coverage extension
+ * from what actually executed (SAN-863). Mirrors the SEMANTICS of Python's
+ * `_derive_invariants_scope` (sanna-repo/src/sanna/middleware.py) with TS's
+ * wider not-evaluated status vocabulary (see NOT_EVALUATED_STATUSES above).
+ *
+ * Assurance metadata must be DERIVED from observed execution, never supplied
+ * by the party being assured (spec 2.16.2). A caller-declared scope may only
+ * LOWER the claim, never raise it:
+ * - Any explicit value other than undefined/null/"full" (i.e. "authority_only"
+ *   or "none") is a caller-asserted floor describing a receipt where invariant
+ *   evaluation does not occur by design. Honored unchanged -- never upgraded,
+ *   never re-derived, and never contradicted even when checks disagree (those
+ *   values understate coverage, which is the conservative direction; a
+ *   verifier-side rule covers the contradiction case).
+ * - undefined/null/"full" is derived from observed execution: every invariant
+ *   DECLARED must have produced an executed check entry (status not in the
+ *   not-evaluated set), or the claim is downgraded to "limited".
+ *
+ * declaredInvariantIds should be the invariant IDs from the loaded
+ * constitution -- the true source of what was declared. When omitted, falls
+ * back to the invariant IDs that appear anywhere in checks (via
+ * triggered_by) -- an imperfect proxy; a separate ticket tracks threading
+ * the true declared set through the non-decorator (gateway/mcp-server)
+ * surfaces.
+ */
+function deriveInvariantsScope(
+  requestedScope: string | null | undefined,
+  checks: CheckResult[],
+  declaredInvariantIds?: string[],
+): InvariantsScopeDerivation {
+  if (requestedScope !== undefined && requestedScope !== null && requestedScope !== "full") {
+    return { scope: requestedScope, coverageExtension: null };
+  }
+
+  const idsInResults = new Set<string>();
+  for (const c of checks) {
+    if (c.triggered_by !== undefined && c.triggered_by !== null) {
+      idsInResults.add(c.triggered_by);
+    }
+  }
+  const declaredIds = declaredInvariantIds !== undefined
+    ? new Set(declaredInvariantIds)
+    : idsInResults;
+
+  const executedIds = new Set<string>();
+  const statusById = new Map<string, unknown>();
+  for (const c of checks) {
+    if (c.triggered_by === undefined || c.triggered_by === null) continue;
+    statusById.set(c.triggered_by, c.status);
+    if (wasInvariantEvaluated(c.status)) {
+      executedIds.add(c.triggered_by);
+    }
+  }
+
+  const missing = [...declaredIds].filter((id) => !executedIds.has(id));
+  if (missing.length === 0) {
+    return { scope: "full", coverageExtension: null };
+  }
+
+  const skipped = missing
+    .map((id) => ({
+      id,
+      reason: statusById.has(id) ? String(statusById.get(id)) : "DROPPED",
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  return {
+    scope: "limited",
+    coverageExtension: {
+      "com.sanna.coverage": {
+        invariants_declared: declaredIds.size,
+        invariants_executed: executedIds.size,
+        skipped,
+      },
+    },
+  };
+}
+
 // ── Receipt generation ───────────────────────────────────────────────
 
 export interface ReceiptParams {
@@ -369,6 +490,10 @@ export interface ReceiptParams {
   workflow_id?: string | null;
   enforcementSurface?: string;
   invariantsScope?: string;
+  /** Invariant IDs declared by the loaded constitution, used to derive
+   *  invariants_scope from observed execution (SAN-863). See
+   *  deriveInvariantsScope for the fallback when omitted. */
+  declaredInvariantIds?: string[];
   content_mode?: ContentMode;
   content_mode_source?: string | null;
   event_type?: string | null;
@@ -482,9 +607,26 @@ export function generateReceipt(params: ReceiptParams): Receipt {
   if (params.extensions) receiptBase.extensions = params.extensions;
 
   // v1.3 required top-level fields (participate in fingerprint at
-  // positions 15-16). Defaults match Python receipt.py:589-590.
+  // positions 15-16).
   receiptBase.enforcement_surface = params.enforcementSurface ?? "middleware";
-  receiptBase.invariants_scope    = params.invariantsScope    ?? "full";
+
+  // SAN-863: derive invariants_scope from observed execution rather than
+  // defaulting to the flattering "full" -- see deriveInvariantsScope above.
+  // Must run, and the coverage extension must be merged, BEFORE
+  // computeFingerprints below: both invariants_scope (field 16) and
+  // extensions (field 12) participate in the fingerprint and signature.
+  const { scope: derivedInvariantsScope, coverageExtension } = deriveInvariantsScope(
+    params.invariantsScope,
+    params.checks,
+    params.declaredInvariantIds,
+  );
+  receiptBase.invariants_scope = derivedInvariantsScope;
+  if (coverageExtension) {
+    receiptBase.extensions = {
+      ...(receiptBase.extensions as Record<string, unknown> | undefined),
+      ...coverageExtension,
+    };
+  }
 
   // v1.4 fields (participate in fingerprint at positions 17-20)
   receiptBase.tool_name = params.tool_name ?? TOOL_NAME;

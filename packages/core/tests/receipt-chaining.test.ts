@@ -188,10 +188,10 @@ describe("CHECKS_VERSION is 10", () => {
   });
 });
 
-describe("tool_version defaults to 1.5.1", () => {
+describe("tool_version defaults to 1.5.2", () => {
   it("uses default tool_version when none provided", () => {
     const receipt = generateReceipt({ ...baseParams() });
-    expect(receipt.tool_version).toBe("1.5.1");
+    expect(receipt.tool_version).toBe("1.5.2");
   });
 });
 

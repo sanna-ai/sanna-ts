@@ -1,11 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   sannaObserve,
   withSannaGovernance,
   SannaHaltError,
   buildTraceData,
 } from "../src/middleware.js";
-import type { Constitution, SannaResult } from "../src/types.js";
+import {
+  registerInvariantEvaluator,
+  clearEvaluators,
+} from "../src/evaluator-registry.js";
+import type { CheckResult, Constitution, SannaResult } from "../src/types.js";
 
 function makeConstitution(overrides: Partial<Constitution> = {}): Constitution {
   return {
@@ -408,5 +412,157 @@ describe("receipt structure", () => {
     expect(result.receipt.receipt_fingerprint).toBeTruthy();
     expect(result.receipt.receipt_fingerprint).toHaveLength(16);
     expect(result.receipt.full_fingerprint).toHaveLength(64);
+  });
+});
+
+describe("SAN-863: invariants_scope derivation via sannaObserve", () => {
+  it("constitution invariant that cannot be evaluated (UNKNOWN_TYPE) -> limited, with coverage extension", () => {
+    // makeConstitution()'s default invariant has rule "No fabrication" and
+    // check: null -- detectInvariantType finds no match, so it resolves to
+    // UNKNOWN_TYPE (no built-in runner, no registered custom evaluator).
+    const governed = sannaObserve(echoAgent, {
+      constitution: makeConstitution(),
+    });
+
+    const result = governed({ query: "test", context: "context" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("limited");
+    const ext = receipt.extensions as Record<string, unknown> | undefined;
+    const cov = ext?.["com.sanna.coverage"] as Record<string, unknown> | undefined;
+    expect(cov).toBeDefined();
+    expect(cov?.invariants_declared).toBe(1);
+    expect(cov?.invariants_executed).toBe(0);
+    expect(cov?.skipped).toEqual([{ id: "INV_NO_FABRICATION", reason: "UNKNOWN_TYPE" }]);
+  });
+
+  it("constitution invariant that evaluates cleanly (pii_detection) -> full, no coverage extension", () => {
+    const constitution = makeConstitution({
+      invariants: [
+        { id: "INV_PII", rule: "No PII in output", enforcement: "halt", check: null },
+      ],
+    });
+    const governed = sannaObserve(echoAgent, { constitution });
+
+    const result = governed({ query: "test", context: "context" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+
+  it("no constitution -> zero declared invariants -> full, no coverage extension", () => {
+    const governed = sannaObserve(echoAgent, {});
+    const result = governed({ query: "test" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+
+  it("constitution with zero invariants -> full, no coverage extension (matches Python)", () => {
+    const constitution = makeConstitution({ invariants: [] });
+    const governed = sannaObserve(echoAgent, { constitution });
+    const result = governed({ query: "test" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+});
+
+describe("SAN-863 amendment: custom-evaluator triggered_by preservation", () => {
+  afterEach(() => {
+    clearEvaluators();
+  });
+
+  // "No fabrication" is undetectable by detectInvariantType, so the invariant's
+  // type is undefined and runInvariantCheck consults the custom-evaluator
+  // registry for a matching id.
+  function customConstitution(id: string): Constitution {
+    return makeConstitution({
+      invariants: [{ id, rule: "No fabrication", enforcement: "halt", check: null }],
+    });
+  }
+
+  function findCheck(result: SannaResult<unknown>, id: string): CheckResult | undefined {
+    return (result.receipt.checks as CheckResult[]).find((c) => c.check_id === id);
+  }
+
+  it("succeeding custom evaluator -> full, no coverage extension, emitted check keeps triggered_by (regression: was 'limited'/DROPPED pre-fix)", () => {
+    // A realistic custom evaluator returns its own verdict but does NOT set
+    // triggered_by -- that join metadata comes from `base`. Pre-fix the success
+    // return spread only `result`, dropping triggered_by, so deriveInvariantsScope
+    // could not match this control and wrongly reported it DROPPED / limited.
+    registerInvariantEvaluator("INV_CUSTOM", () => ({
+      check_id: "INV_CUSTOM",
+      name: "Custom check",
+      passed: true,
+      severity: "info",
+      evidence: null,
+    }));
+
+    const governed = sannaObserve(echoAgent, {
+      constitution: customConstitution("INV_CUSTOM"),
+    });
+    const result = governed({ query: "test", context: "context" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    const customCheck = findCheck(result, "INV_CUSTOM");
+    expect(customCheck).toBeDefined();
+    expect(customCheck?.triggered_by).toBe("INV_CUSTOM");
+    expect(customCheck?.check_impl).toBe("custom_evaluator");
+
+    // The control ran and passed, so coverage must report full -- never limited.
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+
+  it("ENFORCEMENT-UNCHANGED: spreading base leaves passed/severity/evidence exactly as the evaluator returned them", () => {
+    registerInvariantEvaluator("INV_CUSTOM", () => ({
+      check_id: "INV_CUSTOM",
+      name: "Custom check",
+      passed: false,
+      severity: "critical",
+      evidence: "custom violation",
+    }));
+
+    const governed = sannaObserve(echoAgent, {
+      // advisory so a failing critical check records but does not halt
+      constitution: customConstitution("INV_CUSTOM"),
+      enforcementMode: "advisory",
+    });
+    const result = governed({ query: "test", context: "context" });
+
+    const customCheck = findCheck(result, "INV_CUSTOM");
+    expect(customCheck).toBeDefined();
+    // Exactly the evaluator's verdict -- base carries none of these fields, so
+    // the `...base, ...result` order cannot change any enforcement-relevant field.
+    expect(customCheck?.passed).toBe(false);
+    expect(customCheck?.severity).toBe("critical");
+    expect(customCheck?.evidence).toBe("custom violation");
+    // triggered_by is restored for the coverage join.
+    expect(customCheck?.triggered_by).toBe("INV_CUSTOM");
+  });
+
+  it("throwing custom evaluator -> status ERRORED, coverage limited with reason ERRORED (currently-correct behavior stays correct)", () => {
+    registerInvariantEvaluator("INV_CUSTOM", () => {
+      throw new Error("evaluator blew up");
+    });
+
+    const governed = sannaObserve(echoAgent, {
+      constitution: customConstitution("INV_CUSTOM"),
+      enforcementMode: "advisory",
+    });
+    const result = governed({ query: "test", context: "context" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    const customCheck = findCheck(result, "INV_CUSTOM");
+    expect(customCheck?.status).toBe("ERRORED");
+    expect(customCheck?.triggered_by).toBe("INV_CUSTOM");
+
+    expect(receipt.invariants_scope).toBe("limited");
+    const cov = (receipt.extensions as Record<string, unknown>)["com.sanna.coverage"] as Record<string, unknown>;
+    expect(cov.skipped).toEqual([{ id: "INV_CUSTOM", reason: "ERRORED" }]);
   });
 });

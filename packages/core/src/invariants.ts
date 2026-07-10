@@ -162,7 +162,14 @@ export function runInvariantCheck(
           rule: invariant.rule,
           enforcement: invariant.enforcement,
         });
-        return { ...result, check_impl: "custom_evaluator", replayable: false };
+        // SAN-863: spread `base` FIRST so join/identity metadata (triggered_by,
+        // check_id, enforcement_level) is restored, while the evaluator's own
+        // `result` still wins on every field it sets (passed, severity,
+        // evidence, status). Without triggered_by, deriveInvariantsScope cannot
+        // match a succeeding custom control and wrongly reports it DROPPED.
+        // `base` carries no enforcement-relevant field, so this cannot alter
+        // any enforcement outcome.
+        return { ...base, ...result, check_impl: "custom_evaluator", replayable: false };
       } catch (err) {
         return {
           ...base,
@@ -207,7 +214,11 @@ export function runInvariantCheck(
             enforcement: invariant.enforcement,
             type: invariant.type,
           });
-          return { ...result, check_impl: "custom_evaluator", replayable: false };
+          // SAN-863: spread `base` FIRST so join/identity metadata
+          // (triggered_by, check_id, enforcement_level) is restored, while the
+          // evaluator's own `result` still wins on every field it sets. See the
+          // matching comment on the `!invariant.type` success path above.
+          return { ...base, ...result, check_impl: "custom_evaluator", replayable: false };
         } catch (err) {
           return {
             ...base,
