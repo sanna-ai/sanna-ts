@@ -312,6 +312,17 @@ describe("applyRedaction hash recomputation", () => {
 
 describe("middleware with redactionConfig", () => {
   it("test_middleware_emits_redacted_with_config", () => {
+    // SAN-836: observation-only (redaction marker application on the
+    // receipt: content_mode, redacted_fields, __redacted__ markers) --
+    // sannaObserve's default flipped advisory -> enforced, and this
+    // fixture's output ("Response: <query>") does not reference its
+    // context ("sensitive context data"), so C1 Context Grounding
+    // (severity "high", a genuinely-recognized, legitimately-evaluated
+    // built-in coherence check -- not a SAN-850 UNKNOWN_TYPE artifact)
+    // now halts under the new default. This test's purpose is redaction
+    // mechanics, not enforcement, and needs a normal completion to inspect
+    // receipt content, so it is pinned to advisory -- byte-identical to
+    // its pre-flip implicit-advisory behavior.
     const constitution = makeConstitution();
     const governed = sannaObserve(
       (input: { query: string; context: string }) =>
@@ -319,6 +330,7 @@ describe("middleware with redactionConfig", () => {
       {
         constitution,
         redactionConfig: { enabled: true },
+        enforcementMode: "advisory",
       },
     );
 
