@@ -43,7 +43,7 @@ export interface GatewayConfig {
     store_path?: string;
     ttl_seconds?: number;
     hmac_secret: string;
-    delivery_methods?: Array<"inline" | "webhook" | "file">;
+    delivery_methods?: Array<"inline" | "webhook" | "file" | "stderr">;
     webhook_url?: string;
     webhook_headers?: Record<string, string>;
     token_file_path?: string;
@@ -173,7 +173,7 @@ export function validateGatewayConfig(config: GatewayConfig): void {
         "Missing required field: escalation.hmac_secret",
       );
     }
-    const methods = config.escalation.delivery_methods ?? ["inline"];
+    const methods = config.escalation.delivery_methods ?? ["stderr"];
     if (methods.includes("webhook")) {
       if (!config.escalation.webhook_url) {
         throw new GatewayConfigError(
@@ -379,9 +379,9 @@ export function loadGatewayConfig(configPath: string): GatewayConfig {
   const escRaw = (gwRaw.escalation ?? data.escalation) as Record<string, unknown> | undefined;
   if (escRaw && typeof escRaw === "object") {
     // Parse delivery_methods
-    let deliveryMethods: Array<"inline" | "webhook" | "file"> | undefined;
+    let deliveryMethods: Array<"inline" | "webhook" | "file" | "stderr"> | undefined;
     if (Array.isArray(escRaw.delivery_methods)) {
-      deliveryMethods = escRaw.delivery_methods.map(String) as Array<"inline" | "webhook" | "file">;
+      deliveryMethods = escRaw.delivery_methods.map(String) as Array<"inline" | "webhook" | "file" | "stderr">;
     }
 
     // Parse webhook_headers
