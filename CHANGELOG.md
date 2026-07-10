@@ -3,6 +3,20 @@
 All notable changes to the sanna-ts SDK are documented here.
 Format: Keep a Changelog. Versioning: Semantic Versioning.
 
+## [Unreleased] -- 2026-07-09 (SAN-863)
+
+### Changed
+- `@sanna-ai/core`: `invariants_scope` is now DERIVED from observed execution instead of defaulting to `"full"` when a caller omits it. Assurance metadata must reflect what actually ran, not the most flattering value; a receipt that omitted `invariants_scope` previously claimed full invariant coverage even when a declared invariant never executed. `generateReceipt` (`packages/core/src/receipt.ts`) now computes the emitted scope from the `checks` array: every invariant declared by the constitution must have produced an executed check entry (status not in the not-evaluated set) or the claim is downgraded to `"limited"`. A caller-supplied scope other than `"full"` (for example `"authority_only"` or `"none"`) is still honored unchanged -- it is never upgraded, since those values already understate coverage. `sannaObserve` (`packages/core/src/middleware.ts`) now passes the constitution's declared invariant IDs through so the derivation uses the true declared set rather than a proxy; the gateway and MCP server call sites are unchanged and continue to rely on the proxy (the invariant IDs present in the emitted checks), matching the equivalent Python SDK surfaces.
+- TS's not-evaluated status set is wider than Python's: in addition to `NOT_CHECKED` and `ERRORED`, the built-in invariant runners in `packages/core/src/invariants.ts` also emit `UNKNOWN_TYPE` (the invariant's rule could not be classified) and `UNSAFE_PATTERN` (a regex pattern was rejected before evaluation as a ReDoS guard) -- both mean the declared rule did not run and are treated as not-evaluated for coverage purposes. This does not change enforcement outcomes; whether a check ran (coverage) and what it decided (pass/fail) remain independent questions.
+
+### Added
+- When `invariants_scope` is downgraded to `"limited"`, the receipt now carries a `com.sanna.coverage` extension (`extensions["com.sanna.coverage"]`) with `invariants_declared`, `invariants_executed`, and a `skipped` list of `{id, reason}` entries (`reason` is the observed status, or `"DROPPED"` if the invariant never produced a check entry at all). This extension participates in the receipt fingerprint and signature like any other extension field.
+- `packages/core/tests/san863-invariants-scope.test.ts` (new): covers the derivation directly -- unrecognized invariants, invariants that never reach the checks array, explicit `null` vs `undefined` status handling, a caller-declared `"full"` being downgraded when execution does not support it, a caller-declared `"authority_only"` being honored unchanged in both directions, the zero-declared-invariants case, C1-C5 coherence checks not affecting coverage, fingerprint/signature self-consistency for both the `"full"` and `"limited"` shapes, and a negative control that no code path emits `"full"` while invariants are missing.
+- `packages/core/tests/middleware.test.ts`: new `SAN-863` describe block drives the derivation end-to-end through `sannaObserve` with a real constitution, proving the declared-invariant-ID wiring from the resolved constitution through to the emitted `invariants_scope` and coverage extension.
+
+### Security
+- Because `invariants_scope` and any new `com.sanna.coverage` extension participate in the fingerprint (`computeFingerprintInput`, fields 12 and 16), **receipt fingerprints change** for any caller whose checks previously included a declared invariant that did not actually execute. This is expected and correct: those receipts were previously claiming a coverage guarantee the SDK could not back up. Fingerprints computed by prior versions of the SDK for such receipts are not comparable to fingerprints computed by this version. Receipts where every declared invariant executed, or where the caller declares a non-`"full"` scope explicitly (interceptors, gateway authority-only paths), are unaffected.
+
 ## [Unreleased] -- 2026-07-09 (SAN-848)
 
 ### Fixed

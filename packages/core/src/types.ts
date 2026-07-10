@@ -273,7 +273,12 @@ export interface CheckResult {
   severity: string;
   evidence: string | null;
   details?: string;
-  status?: string;
+  /** May be undefined, null, or a status string. null and undefined both
+   *  mean "evaluated normally" (SAN-863 STATUS SENTINEL); only membership
+   *  in receipt.ts's NOT_EVALUATED_STATUSES means the rule did not run.
+   *  sanna-openclaw's in-process regex_deny re-evaluation sets this to
+   *  null on its pass path. */
+  status?: string | null;
   triggered_by?: string | null;
   enforcement_level?: string | null;
   check_impl?: string | null;

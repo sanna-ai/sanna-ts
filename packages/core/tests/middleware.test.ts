@@ -410,3 +410,59 @@ describe("receipt structure", () => {
     expect(result.receipt.full_fingerprint).toHaveLength(64);
   });
 });
+
+describe("SAN-863: invariants_scope derivation via sannaObserve", () => {
+  it("constitution invariant that cannot be evaluated (UNKNOWN_TYPE) -> limited, with coverage extension", () => {
+    // makeConstitution()'s default invariant has rule "No fabrication" and
+    // check: null -- detectInvariantType finds no match, so it resolves to
+    // UNKNOWN_TYPE (no built-in runner, no registered custom evaluator).
+    const governed = sannaObserve(echoAgent, {
+      constitution: makeConstitution(),
+    });
+
+    const result = governed({ query: "test", context: "context" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("limited");
+    const ext = receipt.extensions as Record<string, unknown> | undefined;
+    const cov = ext?.["com.sanna.coverage"] as Record<string, unknown> | undefined;
+    expect(cov).toBeDefined();
+    expect(cov?.invariants_declared).toBe(1);
+    expect(cov?.invariants_executed).toBe(0);
+    expect(cov?.skipped).toEqual([{ id: "INV_NO_FABRICATION", reason: "UNKNOWN_TYPE" }]);
+  });
+
+  it("constitution invariant that evaluates cleanly (pii_detection) -> full, no coverage extension", () => {
+    const constitution = makeConstitution({
+      invariants: [
+        { id: "INV_PII", rule: "No PII in output", enforcement: "halt", check: null },
+      ],
+    });
+    const governed = sannaObserve(echoAgent, { constitution });
+
+    const result = governed({ query: "test", context: "context" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+
+  it("no constitution -> zero declared invariants -> full, no coverage extension", () => {
+    const governed = sannaObserve(echoAgent, {});
+    const result = governed({ query: "test" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+
+  it("constitution with zero invariants -> full, no coverage extension (matches Python)", () => {
+    const constitution = makeConstitution({ invariants: [] });
+    const governed = sannaObserve(echoAgent, { constitution });
+    const result = governed({ query: "test" });
+    const receipt = result.receipt as unknown as Record<string, unknown>;
+
+    expect(receipt.invariants_scope).toBe("full");
+    expect(receipt.extensions).toBeUndefined();
+  });
+});

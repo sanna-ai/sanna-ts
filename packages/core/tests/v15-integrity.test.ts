@@ -26,8 +26,8 @@ describe("SDK constants (v1.5 SHIPPED)", () => {
     expect(CHECKS_VERSION).toBe("10");
   });
 
-  it("TOOL_VERSION is 1.5.1", () => {
-    expect(TOOL_VERSION).toBe("1.5.1");
+  it("TOOL_VERSION is 1.5.2", () => {
+    expect(TOOL_VERSION).toBe("1.5.2");
   });
 });
 
