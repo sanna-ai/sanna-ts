@@ -25,16 +25,16 @@
   "overridesRationale": "SAN-228: pin 4 transitive deps brought in by @modelcontextprotocol/sdk to patched versions. Upstream MCP SDK declares hono ^4.11.4 which admits vulnerable versions; SAN-253 tracks upstream coordination. Remove this block when MCP SDK catches up. SAN-508 (2026-05-10) bumps hono ^4.12.12 -> ^4.12.18 and adds fast-uri ^3.1.2 + ip-address ^10.1.1 to patch newly-published CVEs (1 HIGH fast-uri + 2 MODERATE hono/ip-address). SAN-798 (2026-06-09) bumps hono ^4.12.18 -> ^4.12.25 and adds qs ^6.15.2 to patch MODERATE CVEs.",
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.8.0",
     "@types/prompts": "^2.4.9",
-    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.56.0",
-    "eslint": "^10.3.0",
+    "eslint": "^10.7.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.10"
   }
 }
