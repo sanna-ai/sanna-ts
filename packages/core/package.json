@@ -45,7 +45,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "better-sqlite3": "^12.10.0",
@@ -55,6 +55,6 @@
   },
   "devDependencies": {
     "fast-check": "^4.8.0",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.10"
   }
 }
